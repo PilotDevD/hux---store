@@ -1,0 +1,11 @@
+[build]
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "20"
+  # Skip Prisma's engine checksum download flakiness on CI
+  PRISMA_HIDE_UPDATE_MESSAGE = "true"
+
+# Official Next.js runtime for Netlify (App Router, server actions, middleware, ISR)
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

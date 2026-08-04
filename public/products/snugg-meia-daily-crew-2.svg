@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1250" width="1000" height="1250">
+  <defs>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="70"/>
+    </filter>
+    <pattern id="grid" width="52" height="52" patternUnits="userSpaceOnUse">
+      <path d="M52 0 L0 0 0 52" fill="none" stroke="#2C313A" stroke-width="1" opacity="0.5"/>
+    </pattern>
+  </defs>
+  <rect width="1000" height="1250" fill="#0E1013"/>
+  <polygon points="0,780 1000,420 1000,1250 0,1250" fill="#E7E3DA" opacity="0.16"/>
+  <ellipse cx="240" cy="960" rx="320" ry="320" fill="#E7E3DA" opacity="0.4" filter="url(#glow)"/>
+  <rect width="1000" height="1250" fill="url(#grid)"/>
+  <rect x="0" y="0" width="1000" height="1250" fill="none" stroke="#2C313A" stroke-width="2"/>
+  <path d="M560 820 L710 970 L560 1120" fill="none" stroke="#C6FF00" stroke-width="42.00000000000001" stroke-linecap="square" opacity="0.28"/><path d="M746 820 L896 970 L746 1120" fill="none" stroke="#C6FF00" stroke-width="42.00000000000001" stroke-linecap="square" opacity="0.16"/><path d="M932 820 L1082 970 L932 1120" fill="none" stroke="#C6FF00" stroke-width="42.00000000000001" stroke-linecap="square" opacity="0.08"/>
+  <text x="56" y="80" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="22" letter-spacing="6" fill="#C6FF00">SNUGG</text>
+  <text x="944" y="80" text-anchor="end" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="20" letter-spacing="4" fill="#8B929E">MEIA</text>
+  <text x="56" y="470" font-family="'Arial Narrow','Helvetica Neue',Arial,sans-serif" font-weight="800" font-size="150" letter-spacing="-3" fill="#F4F5F7">MEIA DAILY</text><text x="56" y="620" font-family="'Arial Narrow','Helvetica Neue',Arial,sans-serif" font-weight="800" font-size="150" letter-spacing="-3" fill="#F4F5F7">CREW</text>
+  <text x="56" y="800" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="22" letter-spacing="3" fill="#8B929E">RUN · PERFORMANCE · LIFESTYLE</text>
+  <text x="56" y="1200" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace" font-size="20" fill="#5B616C">FIG.02 — OFF-WHITE</text>
+</svg>

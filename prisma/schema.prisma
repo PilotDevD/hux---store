@@ -1,0 +1,429 @@
+// HUX Store — Prisma schema
+// -----------------------------------------------------------------------------
+// PostgreSQL (Neon/Supabase/etc.) for local dev AND production (Netlify runs
+// serverless, so a hosted DB is required). "enum" fields are String (validated
+// in app via src/lib/enums) and JSON payloads are String — fully portable.
+// Setup: set DATABASE_URL (pooled) + DIRECT_URL (direct) in .env, then
+// `npx prisma db push && npm run db:seed && npm run db:photos`.
+// -----------------------------------------------------------------------------
+
+generator client {
+  provider      = "prisma-client-js"
+  // native = local dev; rhel = Netlify/AWS Lambda serverless runtime.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled connection (app runtime)
+  directUrl = env("DIRECT_URL")   // direct connection (migrations / db push)
+}
+
+// ----------------------------- Staff / access -------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  displayName  String
+  role         String   @default("VENDEDOR") // ADMIN | GERENTE | VENDEDOR
+  permissions  String   @default("[]") // JSON string[] of module ids (vendedor)
+  commissionPct Float   @default(0)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  movements StockMovement[]
+  ordersHandled Order[] @relation("OrderHandledBy")
+}
+
+// ----------------------------- Customers ------------------------------------
+
+model Customer {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  phone        String?
+  cpf          String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  addresses     Address[]
+  orders        Order[]
+  notifications Notification[]
+  carts         Cart[]
+  reviews       Review[]
+}
+
+model Address {
+  id         String   @id @default(cuid())
+  customerId String
+  label      String   @default("Endereço")
+  recipient  String
+  cep        String
+  street     String
+  number     String
+  complement String?
+  district   String
+  city       String
+  state      String   // UF
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+}
+
+// ----------------------------- Catalog --------------------------------------
+
+model Collection {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String?
+  heroImage   String?
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  products   Product[]
+  promotions Promotion[]
+}
+
+model Product {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  brand        String   // HAUSS | HOUND | SNUGG | HUX
+  name         String
+  modelName    String?
+  type         String   // CAMISA | REGATA | TOP | LEGGING | SHORT | JAQUETA | MOLETOM | MEIA | ACESSORIO
+  gender       String   // MASCULINO | FEMININO | UNISSEX
+  description  String?
+  details      String?  // material, care, fit — free text / markdown-lite
+  basePrice    Int      // cents
+  compareAtPrice Int?   // cents — "de" price (crossed out)
+  images       String   @default("[]") // JSON string[] of image urls
+  collectionId String?
+  featured     Boolean  @default(false)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  collection Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  variants   ProductVariant[]
+  promotions Promotion[] @relation("ProductPromotions")
+  reviews    Review[]
+
+  @@index([brand])
+  @@index([type])
+  @@index([collectionId])
+}
+
+model ProductVariant {
+  id            String   @id @default(cuid())
+  productId     String
+  size          String   // PP | P | M | G | GG | XG | UNICO
+  color         String
+  colorHex      String?
+  sku           String   @unique
+  stock         Int      @default(0)
+  priceOverride Int?     // cents — overrides product.basePrice for this variant
+  cost          Int      @default(0) // cents — unit cost (margin / finance)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  cartItems CartItem[]
+  orderItems OrderItem[]
+  movements StockMovement[]
+
+  @@index([productId])
+}
+
+model StockMovement {
+  id        String   @id @default(cuid())
+  variantId String
+  type      String   // ENTRADA | SAIDA
+  qty       Int
+  reason    String
+  orderId   String?
+  userId    String?
+  createdAt DateTime @default(now())
+
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  user    User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([variantId])
+}
+
+// ----------------------------- Promotions & coupons -------------------------
+
+model Promotion {
+  id           String   @id @default(cuid())
+  name         String
+  type         String   // PERCENT | FIXED
+  value        Int      // percent (0-100) OR cents depending on type
+  scope        String   @default("PRODUCT") // PRODUCT | BRAND | COLLECTION | ALL
+  targetBrand  String?
+  collectionId String?
+  startsAt     DateTime?
+  endsAt       DateTime?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  collection Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  products   Product[]   @relation("ProductPromotions")
+}
+
+model Coupon {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  description     String?
+  type            String   // PERCENT | FIXED | FREE_SHIPPING
+  value           Int      @default(0) // percent (0-100) OR cents
+  minOrder        Int      @default(0) // cents
+  maxUses         Int?     // null = unlimited
+  usedCount       Int      @default(0)
+  perCustomerLimit Int?
+  startsAt        DateTime?
+  endsAt          DateTime?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  orders Order[]
+}
+
+// ----------------------------- Cart -----------------------------------------
+
+model Cart {
+  id         String   @id @default(cuid())
+  token      String   @unique // cookie-based cart id (guest + logged)
+  customerId String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  customer Customer?  @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  items    CartItem[]
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  cartId    String
+  variantId String
+  qty       Int      @default(1)
+  createdAt DateTime @default(now())
+
+  cart    Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, variantId])
+  @@index([cartId])
+}
+
+// ----------------------------- Orders ---------------------------------------
+
+model Order {
+  id             String   @id @default(cuid())
+  number         String   @unique
+  customerId     String?  // null for balcão / reservation sales (uses customerSnapshot)
+  status         String   @default("AGUARDANDO_PAGAMENTO") // see enums.ts OrderStatus
+  paymentMethod  String   @default("PIX_MANUAL")
+  paymentStatus  String   @default("PENDENTE") // PENDENTE | CONFIRMADO | ESTORNADO
+  subtotal       Int      // cents (sum of items, before discount)
+  discountTotal  Int      @default(0)
+  shippingTotal  Int      @default(0)
+  total          Int      // cents (subtotal - discount + shipping)
+  costTotal      Int      @default(0) // cents (for margin/finance)
+  couponId       String?
+  couponCode     String?
+  shippingLabel  String?  // e.g. "Frete Sudeste (3-5 dias úteis)"
+  shippingEtaDays Int?
+  trackingCode   String?
+  addressSnapshot String  @default("{}") // JSON of the shipping address at purchase time
+  customerSnapshot String @default("{}") // JSON: name, email, phone at purchase time
+  pixPayload     String?  // Pix copia-e-cola string
+  notes          String?
+  handledById    String?
+  createdAt      DateTime @default(now())
+  paidAt         DateTime?
+  updatedAt      DateTime @updatedAt
+
+  customer  Customer?   @relation(fields: [customerId], references: [id])
+  coupon    Coupon?     @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  handledBy User?       @relation("OrderHandledBy", fields: [handledById], references: [id], onDelete: SetNull)
+  items     OrderItem[]
+  events    OrderEvent[]
+  installments Installment[]
+
+  @@index([customerId])
+  @@index([status])
+}
+
+// Boleto installments (parcelas). One row per boleto; a "1x boleto" has a single
+// row. `linha` is a placeholder digitable line until a real issuer (PagSeguro)
+// is integrated.
+model Installment {
+  id        String   @id @default(cuid())
+  orderId   String
+  seq       Int      // 1..n
+  amount    Int      // cents
+  dueDate   DateTime
+  status    String   @default("PENDENTE") // PENDENTE | PAGO | CANCELADO
+  linha     String?  // linha digitável (placeholder)
+  paidAt    DateTime?
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+// Reserva — provisiona uma variante do estoque para um cliente. "Fechar venda"
+// converte em pedido pago. variantId é referência simples (sem FK) + snapshot.
+model Reservation {
+  id          String   @id @default(cuid())
+  variantId   String
+  brand       String
+  productName String
+  type        String
+  size        String
+  color       String
+  sku         String
+  unitPrice   Int      // cents (snapshot)
+  qty         Int      @default(1)
+  customerName String
+  customerPhone String?
+  notes       String?
+  status      String   @default("ATIVA") // ATIVA | FINALIZADA | CANCELADA
+  orderNumber String?  // set when closed into a sale
+  createdAt   DateTime @default(now())
+  settledAt   DateTime?
+
+  @@index([status])
+  @@index([variantId])
+}
+
+// Encomenda — pedido de produto (fora de estoque / sob medida).
+model Backorder {
+  id            String   @id @default(cuid())
+  brand         String?
+  productType   String
+  modelName     String?
+  size          String
+  color         String
+  qty           Int      @default(1)
+  customerName  String
+  customerPhone String?
+  expectedDate  DateTime?
+  estimatedPrice Int?    // cents
+  notes         String?
+  status        String   @default("PENDENTE") // PENDENTE | CONCLUIDA | CANCELADA
+  createdAt     DateTime @default(now())
+
+  @@index([status])
+}
+
+model OrderItem {
+  id          String  @id @default(cuid())
+  orderId     String
+  variantId   String?
+  brand       String
+  productName String
+  type        String
+  size        String
+  color       String
+  sku         String
+  unitPrice   Int // cents
+  unitCost    Int @default(0) // cents
+  qty         Int
+  lineTotal   Int // cents
+
+  order   Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+}
+
+model OrderEvent {
+  id        String   @id @default(cuid())
+  orderId   String
+  status    String
+  note      String?
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+// ----------------------------- Shipping -------------------------------------
+
+model ShippingRule {
+  id        String   @id @default(cuid())
+  name      String
+  matchType String   @default("ALL") // ALL | UF | CEP_RANGE
+  ufList    String   @default("[]")  // JSON string[] of UFs (for UF match)
+  cepStart  String?  // 8 digits (for CEP_RANGE)
+  cepEnd    String?
+  price     Int      @default(0) // cents
+  freeAbove Int?     // cents — free shipping if order subtotal >= this
+  etaDays   Int      @default(5)
+  priority  Int      @default(0) // higher wins on tie
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+// ----------------------------- Engagement -----------------------------------
+
+model Notification {
+  id         String   @id @default(cuid())
+  customerId String
+  type       String   @default("SISTEMA") // PEDIDO | PROMO | SISTEMA
+  title      String
+  body       String
+  link       String?
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+}
+
+model Review {
+  id         String   @id @default(cuid())
+  productId  String
+  customerId String
+  rating     Int      // 1-5
+  title      String?
+  body       String?
+  approved   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, customerId])
+  @@index([productId])
+}
+
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  subject   String?
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Setting {
+  key       String   @id
+  value     String   @default("{}") // JSON
+  updatedAt DateTime @updatedAt
+}
