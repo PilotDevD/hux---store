@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireModule, hashPassword } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 import { parseReaisToCents } from "@/lib/money";
 import {
   NOTIFICATION_TYPES, ROLES, UFS,
@@ -22,7 +23,7 @@ const notifSchema = z.object({
 export async function sendNotificationAction(
   input: z.input<typeof notifSchema>,
 ): Promise<{ ok: boolean; error?: string; count?: number }> {
-  await requireModule("notificacoes");
+  const staff = await requireModule("notificacoes");
   const parsed = notifSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? "Dados inválidos." };
   const n = parsed.data;
@@ -39,6 +40,7 @@ export async function sendNotificationAction(
       customerId: c.id, type: n.type, title: n.title, body: n.body, link: n.link || null,
     })),
   });
+  await logAudit({ staff, action: "SEND", entity: "Notificação", summary: `Enviou "${n.title}" para ${customers.length} cliente(s)` });
   revalidatePath("/backoffice/notificacoes");
   return { ok: true, count: customers.length };
 }
@@ -58,7 +60,7 @@ const shippingSchema = z.object({
 });
 
 export async function upsertShippingRuleAction(input: z.input<typeof shippingSchema>): Promise<{ ok: boolean; error?: string }> {
-  await requireModule("frete");
+  const staff = await requireModule("frete");
   const parsed = shippingSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? "Dados inválidos." };
   const s = parsed.data;
@@ -72,13 +74,15 @@ export async function upsertShippingRuleAction(input: z.input<typeof shippingSch
   };
   if (s.id) await db.shippingRule.update({ where: { id: s.id }, data });
   else await db.shippingRule.create({ data });
+  await logAudit({ staff, action: s.id ? "UPDATE" : "CREATE", entity: "Frete", entityId: s.id ?? null, summary: `${s.id ? "Editou" : "Criou"} regra de frete "${s.name}"` });
   revalidatePath("/backoffice/frete");
   return { ok: true };
 }
 
 export async function deleteShippingRuleAction(id: string) {
-  await requireModule("frete");
+  const staff = await requireModule("frete");
   await db.shippingRule.delete({ where: { id } }).catch(() => {});
+  await logAudit({ staff, action: "DELETE", entity: "Frete", entityId: id, summary: `Removeu regra de frete ${id}` });
   revalidatePath("/backoffice/frete");
   return { ok: true };
 }
@@ -96,7 +100,7 @@ const userSchema = z.object({
 });
 
 export async function upsertUserAction(input: z.input<typeof userSchema>): Promise<{ ok: boolean; error?: string }> {
-  await requireModule("config");
+  const staff = await requireModule("config");
   const parsed = userSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? "Dados inválidos." };
   const u = parsed.data;
@@ -120,18 +124,20 @@ export async function upsertUserAction(input: z.input<typeof userSchema>): Promi
   } catch {
     return { ok: false, error: "Nome de usuário já existe." };
   }
+  await logAudit({ staff, action: u.id ? "UPDATE" : "CREATE", entity: "Usuário", entityId: u.id ?? null, summary: `${u.id ? "Editou" : "Criou"} o usuário @${username} (${u.role})` });
   revalidatePath("/backoffice/config");
   return { ok: true };
 }
 
 export async function deleteUserAction(id: string): Promise<{ ok: boolean; error?: string }> {
-  await requireModule("config");
+  const staff = await requireModule("config");
   const admins = await db.user.count({ where: { role: "ADMIN", active: true } });
   const target = await db.user.findUnique({ where: { id } });
   if (target?.role === "ADMIN" && admins <= 1) {
     return { ok: false, error: "Não é possível remover o único administrador." };
   }
   await db.user.delete({ where: { id } }).catch(() => {});
+  await logAudit({ staff, action: "DELETE", entity: "Usuário", entityId: id, summary: `Removeu o usuário @${target?.username ?? id}` });
   revalidatePath("/backoffice/config");
   return { ok: true };
 }
@@ -144,7 +150,7 @@ export async function updateSettingsAction(input: {
   supportPhone?: string;
   pixKey?: string;
 }): Promise<{ ok: boolean }> {
-  await requireModule("config");
+  const staff = await requireModule("config");
   const current = await db.setting.findUnique({ where: { key: "store" } });
   let value: Record<string, unknown> = {};
   try { value = current ? JSON.parse(current.value) : {}; } catch { value = {}; }
@@ -159,6 +165,7 @@ export async function updateSettingsAction(input: {
     create: { key: "store", value: JSON.stringify(value) },
     update: { value: JSON.stringify(value) },
   });
+  await logAudit({ staff, action: "UPDATE", entity: "Configurações", summary: "Atualizou as configurações da loja" });
   revalidatePath("/backoffice/config");
   return { ok: true };
 }

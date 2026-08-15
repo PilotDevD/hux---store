@@ -7,6 +7,7 @@ import { parseJson, formatDate } from "@/lib/utils";
 import { formatCents } from "@/lib/money";
 import { ORDER_STATUSES, ORDER_STATUS_LABELS, type OrderStatus } from "@/lib/enums";
 import { PageHeader, EmptyState } from "@/components/backoffice/bo-ui";
+import { BoFilterBar } from "@/components/backoffice/bo-filter-bar";
 import { OrderStatusBadge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -69,6 +70,8 @@ export default async function OrdersListPage({ searchParams }: { searchParams: P
           );
         })}
       </div>
+
+      <BoFilterBar searchPlaceholder="Buscar por número, cliente ou e-mail…" />
 
       {orders.length === 0 ? (
         <EmptyState icon={ShoppingCart} title="Nenhum pedido" hint="Pedidos da loja aparecerão aqui." />

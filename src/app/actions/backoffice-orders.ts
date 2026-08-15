@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireModule } from "@/lib/auth";
 import { transitionOrder } from "@/lib/orders";
-import { isOrderStatus, type OrderStatus } from "@/lib/enums";
+import { logAudit } from "@/lib/audit";
+import { isOrderStatus, ORDER_STATUS_LABELS, type OrderStatus } from "@/lib/enums";
 
 async function findOrder(number: string) {
   return db.order.findUnique({ where: { number } });
@@ -29,6 +30,14 @@ export async function setOrderStatusAction(
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Erro ao atualizar." };
   }
+  await logAudit({
+    staff,
+    action: status === "PAGO" ? "PAYMENT" : "STATUS",
+    entity: "Pedido",
+    entityId: number,
+    summary: `Pedido ${number} → ${ORDER_STATUS_LABELS[status as OrderStatus] ?? status}`,
+    meta: { status, trackingCode: opts.trackingCode ?? null },
+  });
   revalidatePath(`/backoffice/pedidos/${number}`);
   revalidatePath("/backoffice/pedidos");
   revalidatePath("/backoffice");
@@ -50,4 +59,14 @@ export async function shipOrderAction(number: string, trackingCode: string) {
     trackingCode: trackingCode || undefined,
     note: trackingCode ? `Enviado. Rastreio: ${trackingCode}` : "Pedido enviado.",
   });
+}
+
+export async function markRemarketedAction(number: string): Promise<{ ok: boolean }> {
+  const staff = await requireModule("pedidos");
+  const order = await db.order.findUnique({ where: { number } });
+  if (!order) return { ok: false };
+  await db.order.update({ where: { id: order.id }, data: { remarketed: true } });
+  await logAudit({ staff, action: "UPDATE", entity: "Pedido", entityId: number, summary: `Marcou remarketing tratado — ${number}` });
+  revalidatePath("/backoffice");
+  return { ok: true };
 }

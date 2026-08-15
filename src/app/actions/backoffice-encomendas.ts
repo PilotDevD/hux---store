@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireModule } from "@/lib/auth";
 import { parseReaisToCents } from "@/lib/money";
+import { logAudit } from "@/lib/audit";
 import { BRANDS, PRODUCT_TYPES, SIZES, BACKORDER_STATUSES } from "@/lib/enums";
 
 const schema = z.object({
@@ -25,7 +26,7 @@ const schema = z.object({
 export async function upsertBackorderAction(
   input: z.input<typeof schema>,
 ): Promise<{ ok: boolean; error?: string }> {
-  await requireModule("encomendas");
+  const staff = await requireModule("encomendas");
   const parsed = schema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? "Dados inválidos." };
   const b = parsed.data;
@@ -47,6 +48,7 @@ export async function upsertBackorderAction(
   if (b.id) await db.backorder.update({ where: { id: b.id }, data });
   else await db.backorder.create({ data: { ...data, status: "PENDENTE" } });
 
+  await logAudit({ staff, action: b.id ? "UPDATE" : "CREATE", entity: "Encomenda", entityId: b.id ?? null, summary: `${b.id ? "Editou" : "Criou"} encomenda de ${b.customerName}` });
   revalidatePath("/backoffice/encomendas");
   return { ok: true };
 }
@@ -55,18 +57,20 @@ export async function setBackorderStatusAction(
   id: string,
   status: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  await requireModule("encomendas");
+  const staff = await requireModule("encomendas");
   if (!(BACKORDER_STATUSES as readonly string[]).includes(status)) {
     return { ok: false, error: "Status inválido." };
   }
   await db.backorder.update({ where: { id }, data: { status } });
+  await logAudit({ staff, action: "STATUS", entity: "Encomenda", entityId: id, summary: `Encomenda → ${status}` });
   revalidatePath("/backoffice/encomendas");
   return { ok: true };
 }
 
 export async function deleteBackorderAction(id: string): Promise<{ ok: boolean }> {
-  await requireModule("encomendas");
+  const staff = await requireModule("encomendas");
   await db.backorder.delete({ where: { id } }).catch(() => {});
+  await logAudit({ staff, action: "DELETE", entity: "Encomenda", entityId: id, summary: `Removeu encomenda ${id}` });
   revalidatePath("/backoffice/encomendas");
   return { ok: true };
 }

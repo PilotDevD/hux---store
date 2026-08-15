@@ -6,6 +6,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireModule } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 import { slugify } from "@/lib/utils";
 import { parseReaisToCents } from "@/lib/money";
 import { posterVariants } from "@/lib/poster";
@@ -129,6 +130,7 @@ export async function upsertProductAction(
           });
         }
       }
+      await logAudit({ staff, action: "UPDATE", entity: "Produto", entityId: p.id, summary: `Editou o produto "${p.name}" (${p.brand})` });
       revalidatePath("/backoffice/produtos");
       revalidatePath(`/produto/${existing.slug}`);
       return { ok: true, slug: existing.slug };
@@ -174,6 +176,7 @@ export async function upsertProductAction(
         });
       }
     }
+    await logAudit({ staff, action: "CREATE", entity: "Produto", entityId: created.id, summary: `Criou o produto "${p.name}" (${p.brand})` });
     revalidatePath("/backoffice/produtos");
     return { ok: true, slug };
   } catch (e) {
@@ -182,17 +185,19 @@ export async function upsertProductAction(
 }
 
 export async function toggleProductActiveAction(id: string, active: boolean) {
-  await requireModule("produtos");
-  await db.product.update({ where: { id }, data: { active } });
+  const staff = await requireModule("produtos");
+  const p = await db.product.update({ where: { id }, data: { active } });
+  await logAudit({ staff, action: "UPDATE", entity: "Produto", entityId: id, summary: `${active ? "Ativou" : "Desativou"} o produto "${p.name}"` });
   revalidatePath("/backoffice/produtos");
   return { ok: true };
 }
 
 export async function deleteProductAction(id: string) {
-  await requireModule("produtos");
+  const staff = await requireModule("produtos");
   // Soft approach: deactivate to preserve order history; variants deactivated too.
-  await db.product.update({ where: { id }, data: { active: false } });
+  const p = await db.product.update({ where: { id }, data: { active: false } });
   await db.productVariant.updateMany({ where: { productId: id }, data: { active: false } });
+  await logAudit({ staff, action: "DELETE", entity: "Produto", entityId: id, summary: `Removeu (desativou) o produto "${p.name}"` });
   revalidatePath("/backoffice/produtos");
   return { ok: true };
 }
@@ -225,6 +230,7 @@ export async function adjustStockAction(input: z.input<typeof stockSchema>): Pro
       data: { variantId, type, qty, reason: reason || (type === "ENTRADA" ? "Entrada manual" : "Saída manual"), userId: staff.id },
     }),
   ]);
+  await logAudit({ staff, action: "STOCK", entity: "Estoque", entityId: variantId, summary: `${type === "ENTRADA" ? "Entrada" : "Saída"} de ${qty}un — ${variant.sku}${reason ? ` (${reason})` : ""}` });
   revalidatePath("/backoffice/estoque");
   revalidatePath("/backoffice/produtos");
   return { ok: true };
@@ -247,7 +253,7 @@ const promoSchema = z.object({
 });
 
 export async function upsertPromotionAction(input: z.input<typeof promoSchema>): Promise<{ ok: boolean; error?: string }> {
-  await requireModule("promocoes");
+  const staff = await requireModule("promocoes");
   const parsed = promoSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? "Dados inválidos." };
   const p = parsed.data;
@@ -272,13 +278,16 @@ export async function upsertPromotionAction(input: z.input<typeof promoSchema>):
       data: { ...data, products: p.scope === "PRODUCT" ? { connect: (p.productIds ?? []).map((id) => ({ id })) } : undefined },
     });
   }
+  await logAudit({ staff, action: p.id ? "UPDATE" : "CREATE", entity: "Promoção", entityId: p.id ?? null, summary: `${p.id ? "Editou" : "Criou"} a promoção "${p.name}"` });
   revalidatePath("/backoffice/promocoes");
   return { ok: true };
 }
 
 export async function deletePromotionAction(id: string) {
-  await requireModule("promocoes");
+  const staff = await requireModule("promocoes");
+  const promo = await db.promotion.findUnique({ where: { id } });
   await db.promotion.delete({ where: { id } });
+  await logAudit({ staff, action: "DELETE", entity: "Promoção", entityId: id, summary: `Removeu a promoção "${promo?.name ?? id}"` });
   revalidatePath("/backoffice/promocoes");
   return { ok: true };
 }
@@ -300,7 +309,7 @@ const couponSchema = z.object({
 });
 
 export async function upsertCouponAction(input: z.input<typeof couponSchema>): Promise<{ ok: boolean; error?: string }> {
-  await requireModule("cupons");
+  const staff = await requireModule("cupons");
   const parsed = couponSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? "Dados inválidos." };
   const c = parsed.data;
@@ -325,13 +334,16 @@ export async function upsertCouponAction(input: z.input<typeof couponSchema>): P
   } catch {
     return { ok: false, error: "Código de cupom já existe." };
   }
+  await logAudit({ staff, action: c.id ? "UPDATE" : "CREATE", entity: "Cupom", entityId: c.id ?? null, summary: `${c.id ? "Editou" : "Criou"} o cupom ${code}` });
   revalidatePath("/backoffice/cupons");
   return { ok: true };
 }
 
 export async function deleteCouponAction(id: string) {
-  await requireModule("cupons");
+  const staff = await requireModule("cupons");
+  const coupon = await db.coupon.findUnique({ where: { id } });
   await db.coupon.delete({ where: { id } }).catch(() => {});
+  await logAudit({ staff, action: "DELETE", entity: "Cupom", entityId: id, summary: `Removeu o cupom ${coupon?.code ?? id}` });
   revalidatePath("/backoffice/cupons");
   return { ok: true };
 }

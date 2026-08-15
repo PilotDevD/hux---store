@@ -49,6 +49,7 @@ export async function getDashboardData() {
   // --- revenue / profit (month vs last month) ---
   let monthRevenue = 0, monthProfit = 0, lastRevenue = 0, lastProfit = 0;
   let todayCount = 0, todayTotal = 0;
+  let onlineCount = 0, onlineRevenue = 0, manualCount = 0, manualRevenue = 0;
   const brandRevenue: Record<string, number> = {};
   const productQty: Record<string, { name: string; brand: string; qty: number; revenue: number }> = {};
 
@@ -71,6 +72,8 @@ export async function getDashboardData() {
     if (created >= monthStart) {
       monthRevenue += net;
       monthProfit += profit;
+      if (o.channel === "MANUAL") { manualCount++; manualRevenue += net; }
+      else { onlineCount++; onlineRevenue += net; }
       for (const it of o.items) {
         brandRevenue[it.brand] = (brandRevenue[it.brand] ?? 0) + it.lineTotal;
         const k = `${it.brand}·${it.productName}`;
@@ -124,6 +127,10 @@ export async function getDashboardData() {
     profitDelta: pctDelta(monthProfit, lastProfit),
     todayCount,
     todayTotal,
+    onlineCount,
+    onlineRevenue,
+    manualCount,
+    manualRevenue,
     awaitingCount: awaiting.length,
     awaitingTotal,
     pendingFulfillment: pendingProdCount,

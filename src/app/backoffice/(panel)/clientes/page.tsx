@@ -6,12 +6,28 @@ import { db } from "@/lib/db";
 import { formatCents } from "@/lib/money";
 import { formatDate, initials } from "@/lib/utils";
 import { PageHeader, EmptyState, StatCard } from "@/components/backoffice/bo-ui";
+import { BoFilterBar } from "@/components/backoffice/bo-filter-bar";
+import type { Prisma } from "@prisma/client";
 
 export const metadata: Metadata = { title: "Clientes" };
 
-export default async function ClientesPage() {
+type SP = Record<string, string | string[] | undefined>;
+const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+
+export default async function ClientesPage({ searchParams }: { searchParams: Promise<SP> }) {
   await guardModule("clientes");
+  const sp = await searchParams;
+  const q = first(sp.q)?.trim();
+  const where: Prisma.CustomerWhereInput = q
+    ? { OR: [
+        { name: { contains: q, mode: "insensitive" } },
+        { email: { contains: q, mode: "insensitive" } },
+        { phone: { contains: q } },
+      ] }
+    : {};
+
   const customers = await db.customer.findMany({
+    where,
     orderBy: { createdAt: "desc" },
     include: {
       orders: { where: { status: { not: "CANCELADO" } }, select: { total: true, paymentStatus: true } },
@@ -33,6 +49,7 @@ export default async function ClientesPage() {
   return (
     <>
       <PageHeader eyebrow="Relacionamento" title="Clientes" subtitle={`${rows.length} cadastrados`} />
+      <BoFilterBar searchPlaceholder="Buscar por nome, e-mail ou telefone…" />
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <StatCard label="Clientes" value={String(rows.length)} icon={Users} />
         <StatCard label="Compraram" value={String(withOrders)} icon={Users} tone="positive" />

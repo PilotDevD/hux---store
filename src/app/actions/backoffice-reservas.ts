@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireModule } from "@/lib/auth";
 import { computePrice, getActivePromotions } from "@/lib/pricing";
+import { logAudit } from "@/lib/audit";
 
 function reservaOrderNumber(): string {
   const yy = new Date().getFullYear().toString().slice(-2);
@@ -63,6 +64,7 @@ export async function createReservationAction(
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Erro ao criar reserva." };
   }
+  await logAudit({ staff, action: "CREATE", entity: "Reserva", summary: `Reservou ${qty}x ${variant.product.name} para ${customerName}` });
   revalidatePath("/backoffice/reservas");
   revalidatePath("/backoffice/estoque");
   return { ok: true };
@@ -126,6 +128,7 @@ export async function closeReservationAction(
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Erro ao fechar venda." };
   }
+  await logAudit({ staff, action: "STATUS", entity: "Reserva", entityId: reservationId, summary: `Fechou a venda da reserva → pedido ${number}` });
   revalidatePath("/backoffice/reservas");
   revalidatePath("/backoffice/pedidos");
   revalidatePath("/backoffice");
@@ -147,6 +150,7 @@ export async function cancelReservationAction(
     }),
     db.reservation.update({ where: { id: reservationId }, data: { status: "CANCELADA", settledAt: new Date() } }),
   ]);
+  await logAudit({ staff, action: "DELETE", entity: "Reserva", entityId: reservationId, summary: `Cancelou a reserva de ${r.customerName} (estoque devolvido)` });
   revalidatePath("/backoffice/reservas");
   revalidatePath("/backoffice/estoque");
   return { ok: true };

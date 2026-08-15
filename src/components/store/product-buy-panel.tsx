@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Minus, Plus, ShoppingBag, Check, Zap } from "lucide-react";
+import { Minus, Plus, ShoppingBag, Check, Zap, BellRing, Loader2 } from "lucide-react";
 import type { ProductDetail } from "@/lib/catalog";
+import { requestBackInStockAction } from "@/app/actions/store-notify";
 import { formatCents, percentOff } from "@/lib/money";
 import { SIZE_LABELS, type Size } from "@/lib/enums";
 import { useCart } from "@/components/cart/cart-provider";
@@ -25,6 +26,9 @@ export function ProductBuyPanel({ product }: { product: ProductDetail }) {
   const [qty, setQty] = useState(1);
   const [busy, setBusy] = useState(false);
   const [added, setAdded] = useState(false);
+  const [notifyEmail, setNotifyEmail] = useState("");
+  const [notifyBusy, setNotifyBusy] = useState(false);
+  const [notifySent, setNotifySent] = useState(false);
 
   // keep size valid when color changes
   const variant = useMemo(
@@ -65,6 +69,21 @@ export function ProductBuyPanel({ product }: { product: ProductDetail }) {
   async function buyNow() {
     const ok = await handleAdd(false);
     if (ok) router.push("/checkout");
+  }
+
+  async function notifyMe() {
+    if (!/.+@.+\..+/.test(notifyEmail)) return toast("Informe um e-mail válido.", "error");
+    setNotifyBusy(true);
+    const res = await requestBackInStockAction({
+      productId: product.id,
+      variantId: variant?.id,
+      email: notifyEmail,
+      size: variant?.size,
+      color,
+    });
+    setNotifyBusy(false);
+    if (res.ok) { setNotifySent(true); toast("Pronto! Avisaremos assim que voltar.", "success"); }
+    else toast(res.error ?? "Erro.", "error");
   }
 
   return (
@@ -193,14 +212,38 @@ export function ProductBuyPanel({ product }: { product: ProductDetail }) {
             )}
           </button>
         </div>
-        <button
-          onClick={buyNow}
-          disabled={busy || unavailable}
-          className="btn btn-light w-full"
-        >
-          <Zap size={16} /> Comprar agora
-        </button>
+        {!unavailable && (
+          <button onClick={buyNow} disabled={busy} className="btn btn-light w-full">
+            <Zap size={16} /> Comprar agora
+          </button>
+        )}
       </div>
+
+      {/* Avise-me quando voltar */}
+      {unavailable && (
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+          <p className="flex items-center gap-2 font-semibold"><BellRing size={16} className="text-orange" /> Esgotado nesse tamanho/cor</p>
+          {notifySent ? (
+            <p className="mt-2 text-sm text-positive">✓ Avisaremos <strong>{notifyEmail}</strong> assim que voltar ao estoque.</p>
+          ) : (
+            <>
+              <p className="mt-1 text-sm text-muted">Deixe seu e-mail que avisamos quando voltar.</p>
+              <div className="mt-3 flex gap-2">
+                <input
+                  type="email"
+                  value={notifyEmail}
+                  onChange={(e) => setNotifyEmail(e.target.value)}
+                  placeholder="seu@email.com"
+                  className="field"
+                />
+                <button onClick={notifyMe} disabled={notifyBusy} className="btn btn-primary shrink-0">
+                  {notifyBusy ? <Loader2 size={16} className="animate-spin" /> : <BellRing size={16} />} Avise-me
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

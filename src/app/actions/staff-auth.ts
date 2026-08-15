@@ -4,6 +4,7 @@ import { z } from "zod";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { verifyPassword, createStaffSession, destroyStaffSession } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 
 type FormState = { ok: boolean; error?: string } | null;
 
@@ -33,6 +34,7 @@ export async function staffLoginAction(_prev: FormState, formData: FormData): Pr
   }
 
   await createStaffSession(user.id, user.displayName, user.role);
+  await logAudit({ staff: { id: user.id, displayName: user.displayName }, action: "LOGIN", entity: "Sessão", summary: `Login no painel (@${user.username})` });
   redirect(safeNext(formData.get("next")));
 }
 

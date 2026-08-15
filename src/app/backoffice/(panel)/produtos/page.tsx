@@ -6,15 +6,38 @@ import { guardModule } from "@/lib/bo-guard";
 import { db } from "@/lib/db";
 import { parseJson } from "@/lib/utils";
 import { formatCents } from "@/lib/money";
-import { PRODUCT_TYPE_LABELS, type ProductType } from "@/lib/enums";
+import { BRANDS, PRODUCT_TYPES, PRODUCT_TYPE_LABELS, type ProductType } from "@/lib/enums";
 import { PageHeader, EmptyState } from "@/components/backoffice/bo-ui";
+import { BoFilterBar } from "@/components/backoffice/bo-filter-bar";
 import { Badge } from "@/components/ui/badge";
+import type { Prisma } from "@prisma/client";
 
 export const metadata: Metadata = { title: "Produtos" };
 
-export default async function ProductsPage() {
+type SP = Record<string, string | string[] | undefined>;
+const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+
+export default async function ProductsPage({ searchParams }: { searchParams: Promise<SP> }) {
   await guardModule("produtos");
+  const sp = await searchParams;
+  const q = first(sp.q)?.trim();
+  const brand = first(sp.brand);
+  const type = first(sp.tipo);
+  const status = first(sp.status);
+
+  const where: Prisma.ProductWhereInput = {};
+  if (brand) where.brand = brand;
+  if (type) where.type = type;
+  if (status === "ativo") where.active = true;
+  if (status === "inativo") where.active = false;
+  if (q) where.OR = [
+    { name: { contains: q, mode: "insensitive" } },
+    { modelName: { contains: q, mode: "insensitive" } },
+    { variants: { some: { sku: { contains: q, mode: "insensitive" } } } },
+  ];
+
   const products = await db.product.findMany({
+    where,
     orderBy: [{ active: "desc" }, { createdAt: "desc" }],
     include: { variants: true, collection: { select: { name: true } } },
   });
@@ -32,11 +55,20 @@ export default async function ProductsPage() {
         }
       />
 
+      <BoFilterBar
+        searchPlaceholder="Buscar por nome, modelo ou SKU…"
+        selects={[
+          { param: "brand", label: "Marca", options: BRANDS.map((b) => ({ value: b, label: b })) },
+          { param: "tipo", label: "Tipo", options: PRODUCT_TYPES.map((t) => ({ value: t, label: PRODUCT_TYPE_LABELS[t] })) },
+          { param: "status", label: "Situação", options: [{ value: "ativo", label: "Ativos" }, { value: "inativo", label: "Inativos" }] },
+        ]}
+      />
+
       {products.length === 0 ? (
         <EmptyState
           icon={Shirt}
-          title="Nenhum produto"
-          hint="Cadastre seu primeiro produto para começar a vender."
+          title="Nenhum produto encontrado"
+          hint="Ajuste os filtros ou cadastre um novo produto."
           action={<Link href="/backoffice/produtos/novo" className="btn btn-primary mt-1"><Plus size={16} /> Novo produto</Link>}
         />
       ) : (

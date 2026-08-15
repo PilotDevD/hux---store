@@ -35,6 +35,7 @@ model User {
 
   movements StockMovement[]
   ordersHandled Order[] @relation("OrderHandledBy")
+  ordersSold    Order[] @relation("OrderSoldBy")
 }
 
 // ----------------------------- Customers ------------------------------------
@@ -193,7 +194,8 @@ model Coupon {
   active          Boolean  @default(true)
   createdAt       DateTime @default(now())
 
-  orders Order[]
+  orders     Order[]
+  ambassador Ambassador?
 }
 
 // ----------------------------- Cart -----------------------------------------
@@ -237,6 +239,11 @@ model Order {
   shippingTotal  Int      @default(0)
   total          Int      // cents (subtotal - discount + shipping)
   costTotal      Int      @default(0) // cents (for margin/finance)
+  channel        String   @default("ONLINE") // ONLINE | MANUAL
+  soldByUserId   String?
+  soldByName     String?
+  cardInstallments Int?    // number of credit-card installments (for remarketing)
+  remarketed     Boolean  @default(false)
   couponId       String?
   couponCode     String?
   shippingLabel  String?  // e.g. "Frete Sudeste (3-5 dias úteis)"
@@ -254,6 +261,7 @@ model Order {
   customer  Customer?   @relation(fields: [customerId], references: [id])
   coupon    Coupon?     @relation(fields: [couponId], references: [id], onDelete: SetNull)
   handledBy User?       @relation("OrderHandledBy", fields: [handledById], references: [id], onDelete: SetNull)
+  soldBy    User?       @relation("OrderSoldBy", fields: [soldByUserId], references: [id], onDelete: SetNull)
   items     OrderItem[]
   events    OrderEvent[]
   installments Installment[]
@@ -426,4 +434,153 @@ model Setting {
   key       String   @id
   value     String   @default("{}") // JSON
   updatedAt DateTime @updatedAt
+}
+
+// ----------------------------- Mala HUX (condicional) -----------------------
+
+model Mala {
+  id            String   @id @default(cuid())
+  customerName  String
+  customerPhone String?
+  notes         String?
+  status        String   @default("COM_CLIENTE") // COM_CLIENTE | FINALIZADA | CANCELADA
+  handledById   String?
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime
+  settledAt     DateTime?
+  orderNumber   String?  // sale generated from "comprou" items
+
+  items MalaItem[]
+
+  @@index([status])
+}
+
+model MalaItem {
+  id          String  @id @default(cuid())
+  malaId      String
+  variantId   String
+  brand       String
+  productName String
+  type        String
+  size        String
+  color       String
+  sku         String
+  unitPrice   Int
+  qty         Int     @default(1)
+  decision    String  @default("PENDENTE") // PENDENTE | COMPROU | DEVOLVEU
+
+  mala Mala @relation(fields: [malaId], references: [id], onDelete: Cascade)
+
+  @@index([malaId])
+}
+
+// ----------------------------- Confecção ------------------------------------
+
+model RawMaterial {
+  id          String   @id @default(cuid())
+  name        String   // tipo de tecido
+  color       String
+  supplier    String?
+  quantity    Float    @default(0) // kg / metros / unidades
+  unit        String   @default("kg")
+  totalCost   Int      @default(0) // cents
+  yieldPieces Int?     // rende ~X peças
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  jobs ProductionJob[]
+}
+
+model ProductionJob {
+  id             String   @id @default(cuid())
+  rawMaterialId  String?
+  brand          String?
+  productType    String
+  modelName      String?
+  color          String
+  size           String?
+  qty            Int      @default(1)
+  forCustomerName String?
+  phase          String   @default("CONFECCAO") // CONFECCAO | ESTAMPARIA | FINALIZADA
+  unitCost       Int?     // cents
+  dueDate        DateTime?
+  notes          String?
+  handledById    String?
+  createdAt      DateTime @default(now())
+  finalizedAt    DateTime?
+
+  rawMaterial RawMaterial? @relation(fields: [rawMaterialId], references: [id], onDelete: SetNull)
+
+  @@index([phase])
+}
+
+// ----------------------------- Despesas -------------------------------------
+
+model Expense {
+  id        String   @id @default(cuid())
+  name      String
+  category  String   @default("OUTROS")
+  amount    Int      // cents
+  dueDate   DateTime
+  paid      Boolean  @default(false)
+  paidAt    DateTime?
+  label     String?  // e.g. "2/6" for parcelada
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@index([paid])
+  @@index([dueDate])
+}
+
+// ----------------------------- Auditoria ------------------------------------
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorType String   @default("STAFF") // STAFF | CUSTOMER | SYSTEM
+  actorId   String?
+  actorName String
+  action    String   // CREATE | UPDATE | DELETE | STATUS | LOGIN | PAYMENT ...
+  entity    String   // Product | Order | Coupon | ...
+  entityId  String?
+  summary   String
+  meta      String   @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([entity])
+  @@index([createdAt])
+  @@index([actorId])
+}
+
+// ----------------------------- Avise-me (back in stock) ---------------------
+
+model StockNotifyRequest {
+  id          String   @id @default(cuid())
+  productId   String
+  variantId   String?
+  productName String
+  email       String
+  size        String?
+  color       String?
+  notified    Boolean  @default(false)
+  notifiedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([productId])
+  @@index([notified])
+}
+
+// ----------------------------- Embaixadores ---------------------------------
+
+model Ambassador {
+  id          String   @id @default(cuid())
+  name        String
+  email       String?
+  phone       String?
+  couponId    String?  @unique
+  cashbackPct Float    @default(5)
+  active      Boolean  @default(true)
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  coupon Coupon? @relation(fields: [couponId], references: [id], onDelete: SetNull)
 }

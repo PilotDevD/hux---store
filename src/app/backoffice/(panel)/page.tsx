@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { guardModule } from "@/lib/bo-guard";
 import { getDashboardData } from "@/lib/analytics";
+import { getAlerts } from "@/lib/alerts";
 import { formatCents } from "@/lib/money";
 import { formatDate } from "@/lib/utils";
 import { BRAND_INFO, type Brand } from "@/lib/enums";
@@ -18,6 +19,7 @@ export const metadata: Metadata = { title: "Dashboard" };
 export default async function DashboardPage() {
   const staff = await guardModule("dashboard");
   const d = await getDashboardData();
+  const alerts = await getAlerts();
   const maxBrand = Math.max(1, ...d.brandRevenue.map((b) => b.revenue));
 
   return (
@@ -70,7 +72,60 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
+      {/* Central de alertas */}
+      <div className="mt-4 card overflow-hidden">
+        <div className="flex items-center justify-between border-b border-line px-5 py-4">
+          <SectionTitle>Central de alertas</SectionTitle>
+          {alerts.counts.total > 0 && (
+            <span className="rounded-full bg-negative/10 px-2.5 py-1 font-mono text-xs text-negative">{alerts.counts.total} pendência(s)</span>
+          )}
+        </div>
+        {alerts.items.length === 0 ? (
+          <p className="p-8 text-center text-sm text-muted">Tudo em dia — nenhum vencimento ou alerta no momento. 🎉</p>
+        ) : (
+          <div className="divide-y divide-line">
+            {alerts.items.slice(0, 10).map((a) => (
+              <Link key={a.id} href={a.link} className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-elevated">
+                <span className={`size-2 shrink-0 rounded-full ${a.overdue ? "bg-negative" : a.kind === "REMARKETING" ? "bg-info" : "bg-warning"}`} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{a.title}</p>
+                  <p className="truncate text-xs text-muted">{a.detail}{a.date ? ` · ${formatDate(a.date)}` : ""}</p>
+                </div>
+                {a.amount != null && <span className={`shrink-0 text-sm font-semibold ${a.overdue ? "text-negative" : "text-ink-soft"}`}>{formatCents(a.amount)}</span>}
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Sales channel split */}
+      <div className="mt-6 card p-6">
+        <SectionTitle>Vendas do mês · físico × online</SectionTitle>
+        {(() => {
+          const totalRev = Math.max(1, d.manualRevenue + d.onlineRevenue);
+          const rows = [
+            { label: "Vendas físicas", count: d.manualCount, rev: d.manualRevenue, color: "var(--color-brand)" },
+            { label: "Loja online", count: d.onlineCount, rev: d.onlineRevenue, color: "var(--color-info)" },
+          ];
+          return (
+            <div className="space-y-4">
+              {rows.map((r) => (
+                <div key={r.label}>
+                  <div className="mb-1.5 flex items-center justify-between text-sm">
+                    <span className="font-semibold">{r.label} <span className="text-muted">· {r.count} venda(s)</span></span>
+                    <span className="text-muted">{formatCents(r.rev)}</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-void">
+                    <div className="h-full rounded-full" style={{ width: `${(r.rev / totalRev) * 100}%`, background: r.color }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
         {/* Revenue chart */}
         <div className="card p-6">
           <div className="mb-4 flex items-center justify-between">

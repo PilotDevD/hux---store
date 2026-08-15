@@ -114,13 +114,57 @@ export const ORDER_FLOW: OrderStatus[] = [
 export const PAYMENT_STATUSES = ["PENDENTE", "CONFIRMADO", "ESTORNADO"] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
-export const PAYMENT_METHODS = ["PIX_MANUAL", "BOLETO", "CARTAO"] as const;
+export const PAYMENT_METHODS = ["PIX_MANUAL", "BOLETO", "CARTAO", "DINHEIRO", "DEBITO"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   PIX_MANUAL: "Pix",
   BOLETO: "Boleto bancário",
   CARTAO: "Cartão de crédito",
+  DINHEIRO: "Dinheiro",
+  DEBITO: "Cartão de débito",
+};
+
+// Methods available when a staff member registers a physical/manual sale.
+export const MANUAL_PAYMENT_METHODS = ["DINHEIRO", "PIX_MANUAL", "DEBITO", "CARTAO"] as const;
+
+export const SALE_CHANNELS = ["ONLINE", "MANUAL"] as const;
+export type SaleChannel = (typeof SALE_CHANNELS)[number];
+export const SALE_CHANNEL_LABELS: Record<string, string> = {
+  ONLINE: "Loja online",
+  MANUAL: "Venda física",
+};
+
+export const MALA_STATUSES = ["COM_CLIENTE", "FINALIZADA", "CANCELADA"] as const;
+export const MALA_STATUS_LABELS: Record<string, string> = {
+  COM_CLIENTE: "Com o cliente",
+  FINALIZADA: "Finalizada",
+  CANCELADA: "Cancelada",
+};
+export const MALA_DECISIONS = ["PENDENTE", "COMPROU", "DEVOLVEU"] as const;
+
+export const PRODUCTION_PHASES = ["CONFECCAO", "ESTAMPARIA", "FINALIZADA"] as const;
+export type ProductionPhase = (typeof PRODUCTION_PHASES)[number];
+export const PRODUCTION_PHASE_LABELS: Record<string, string> = {
+  CONFECCAO: "Na costureira",
+  ESTAMPARIA: "Na estamparia",
+  FINALIZADA: "Confecção finalizada",
+};
+
+export const EXPENSE_TYPES = ["UNICA", "PARCELADA"] as const;
+export const EXPENSE_CATEGORIES = [
+  "ALUGUEL", "AGUA_LUZ_INTERNET", "SALARIOS", "FORNECEDORES",
+  "MARKETING", "MANUTENCAO", "IMPOSTOS", "OUTROS",
+] as const;
+export const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
+  ALUGUEL: "Aluguel",
+  AGUA_LUZ_INTERNET: "Água/Luz/Internet",
+  SALARIOS: "Salários",
+  FORNECEDORES: "Fornecedores",
+  MARKETING: "Marketing",
+  MANUTENCAO: "Manutenção",
+  IMPOSTOS: "Impostos",
+  OUTROS: "Outros",
 };
 
 export const INSTALLMENT_STATUSES = ["PENDENTE", "PAGO", "CANCELADO"] as const;
@@ -151,16 +195,24 @@ export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 export const MODULES = [
   { id: "dashboard", label: "Dashboard" },
   { id: "pedidos", label: "Pedidos" },
+  { id: "vendas", label: "Vendas" },
   { id: "boletos", label: "Boletos" },
   { id: "reservas", label: "Reservas" },
+  { id: "mala", label: "Mala HUX" },
   { id: "encomendas", label: "Encomendas" },
+  { id: "confeccao", label: "Confecção" },
   { id: "produtos", label: "Produtos" },
   { id: "estoque", label: "Estoque" },
+  { id: "notafiscal", label: "Nota Fiscal IA" },
   { id: "promocoes", label: "Promoções" },
   { id: "cupons", label: "Cupons" },
+  { id: "embaixadores", label: "Embaixadores" },
   { id: "clientes", label: "Clientes" },
+  { id: "avisos", label: "Avise-me" },
+  { id: "despesas", label: "Despesas" },
   { id: "notificacoes", label: "Notificações" },
   { id: "frete", label: "Frete" },
+  { id: "auditoria", label: "Auditoria" },
 ] as const;
 export type ModuleId = (typeof MODULES)[number]["id"];
 

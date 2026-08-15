@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireModule } from "@/lib/auth";
 import { payInstallment, payAllInstallments } from "@/lib/orders";
+import { logAudit } from "@/lib/audit";
 
 /** Give discharge to a single boleto (parcela). */
 export async function payInstallmentAction(
@@ -15,6 +16,7 @@ export async function payInstallmentAction(
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Erro ao dar baixa." };
   }
+  await logAudit({ staff, action: "PAYMENT", entity: "Boleto", entityId: installmentId, summary: "Deu baixa em um boleto" });
   revalidatePath("/backoffice/boletos");
   revalidatePath("/backoffice/pedidos");
   revalidatePath("/backoffice");
@@ -33,6 +35,7 @@ export async function settleOrderBoletosAction(
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Erro ao dar baixa." };
   }
+  await logAudit({ staff, action: "PAYMENT", entity: "Boleto", entityId: orderNumber, summary: `Baixou todos os boletos do pedido ${orderNumber}` });
   revalidatePath(`/backoffice/pedidos/${orderNumber}`);
   revalidatePath("/backoffice/boletos");
   revalidatePath("/backoffice");

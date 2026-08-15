@@ -6,6 +6,7 @@ import {
   LayoutDashboard, ShoppingCart, Shirt, Boxes, Percent, Ticket,
   Users, Bell, Truck, Settings, LogOut, ExternalLink,
   Barcode, Bookmark, ClipboardList,
+  Receipt, Briefcase, Scissors, Wallet, ScanLine, Megaphone, BellRing, History,
 } from "lucide-react";
 import { staffLogoutAction } from "@/app/actions/staff-auth";
 import { Logo } from "@/components/site/logo";
@@ -15,16 +16,24 @@ import { initials, cn } from "@/lib/utils";
 const NAV: { id: string; label: string; href: string; icon: typeof LayoutDashboard }[] = [
   { id: "dashboard", label: "Dashboard", href: "/backoffice", icon: LayoutDashboard },
   { id: "pedidos", label: "Pedidos", href: "/backoffice/pedidos", icon: ShoppingCart },
+  { id: "vendas", label: "Vendas", href: "/backoffice/vendas", icon: Receipt },
   { id: "boletos", label: "Boletos", href: "/backoffice/boletos", icon: Barcode },
   { id: "reservas", label: "Reservas", href: "/backoffice/reservas", icon: Bookmark },
+  { id: "mala", label: "Mala HUX", href: "/backoffice/mala", icon: Briefcase },
   { id: "encomendas", label: "Encomendas", href: "/backoffice/encomendas", icon: ClipboardList },
+  { id: "confeccao", label: "Confecção", href: "/backoffice/confeccao", icon: Scissors },
   { id: "produtos", label: "Produtos", href: "/backoffice/produtos", icon: Shirt },
   { id: "estoque", label: "Estoque", href: "/backoffice/estoque", icon: Boxes },
+  { id: "notafiscal", label: "Nota Fiscal IA", href: "/backoffice/nota-fiscal", icon: ScanLine },
   { id: "promocoes", label: "Promoções", href: "/backoffice/promocoes", icon: Percent },
   { id: "cupons", label: "Cupons", href: "/backoffice/cupons", icon: Ticket },
+  { id: "embaixadores", label: "Embaixadores", href: "/backoffice/embaixadores", icon: Megaphone },
   { id: "clientes", label: "Clientes", href: "/backoffice/clientes", icon: Users },
+  { id: "avisos", label: "Avise-me", href: "/backoffice/avisos", icon: BellRing },
+  { id: "despesas", label: "Despesas", href: "/backoffice/despesas", icon: Wallet },
   { id: "notificacoes", label: "Notificações", href: "/backoffice/notificacoes", icon: Bell },
   { id: "frete", label: "Frete", href: "/backoffice/frete", icon: Truck },
+  { id: "auditoria", label: "Auditoria", href: "/backoffice/auditoria", icon: History },
   { id: "config", label: "Configurações", href: "/backoffice/config", icon: Settings },
 ];
 
