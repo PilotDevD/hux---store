@@ -17,7 +17,7 @@ export type NfResult =
 
 const PROMPT = `Você é um assistente que lê notas fiscais de compra de vestuário esportivo.
 Extraia os dados da imagem e responda APENAS com JSON válido (sem markdown, sem comentários) neste formato exato:
-{"supplier":"nome do fornecedor","items":[{"description":"...","brand":"HAUSS|HOUND|SNUGG|HUX ou vazio","type":"CAMISA|REGATA|TOP|LEGGING|SHORT|JAQUETA|MOLETOM|MEIA|ACESSORIO","gender":"MASCULINO|FEMININO|UNISSEX","size":"PP|P|M|G|GG|XG|UNICO","color":"cor","qty":number,"unitCost":number}]}
+{"supplier":"nome do fornecedor","items":[{"description":"...","brand":"HAUSS|HOUND|SNUGG|HUX ou vazio","type":"CAMISA|REGATA|TOP|CALCA|SHORT|JAQUETA|MOLETOM|MEIA|ACESSORIO","gender":"MASCULINO|FEMININO|UNISSEX","size":"PP|P|M|G|GG|XG|UNICO","color":"cor","qty":number,"unitCost":number}]}
 unitCost é o custo unitário em reais (número, ex 49.90). Se algum campo não estiver claro, use "" (ou 0 para números). Não invente itens.`;
 
 /** Sends the invoice image to an LLM vision model and returns structured items. */

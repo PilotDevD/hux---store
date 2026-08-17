@@ -294,6 +294,11 @@ export async function transitionOrder(
           },
         });
       }
+      // Stop any pending parcelas (boleto / crediário a prazo).
+      await tx.installment.updateMany({
+        where: { orderId, status: "PENDENTE" },
+        data: { status: "CANCELADO" },
+      });
     }
 
     await tx.order.update({ where: { id: orderId }, data });

@@ -100,8 +100,9 @@ model Product {
   brand        String   // HAUSS | HOUND | SNUGG | HUX
   name         String
   modelName    String?
-  type         String   // CAMISA | REGATA | TOP | LEGGING | SHORT | JAQUETA | MOLETOM | MEIA | ACESSORIO
+  type         String   // CAMISA | REGATA | TOP | CALCA | SHORT | JAQUETA | MOLETOM | MEIA | ACESSORIO
   gender       String   // MASCULINO | FEMININO | UNISSEX
+  supplierCode String?  // código / SKU do fornecedor (referência de compra)
   description  String?
   details      String?  // material, care, fit — free text / markdown-lite
   basePrice    Int      // cents
@@ -243,6 +244,7 @@ model Order {
   soldByUserId   String?
   soldByName     String?
   cardInstallments Int?    // number of credit-card installments (for remarketing)
+  downPayment    Int      @default(0) // entrada (cents) — vendas a prazo / crediário
   remarketed     Boolean  @default(false)
   couponId       String?
   couponCode     String?
@@ -583,4 +585,15 @@ model Ambassador {
   createdAt   DateTime @default(now())
 
   coupon Coupon? @relation(fields: [couponId], references: [id], onDelete: SetNull)
+}
+
+// ----------------------------- Uploads (imagens no banco) -------------------
+// Netlify serverless tem filesystem read-only, então as fotos enviadas pelo
+// backoffice são guardadas como bytes no banco e servidas por /api/img/[id].
+model Upload {
+  id        String   @id @default(cuid())
+  mimeType  String
+  data      Bytes
+  size      Int      @default(0)
+  createdAt DateTime @default(now())
 }

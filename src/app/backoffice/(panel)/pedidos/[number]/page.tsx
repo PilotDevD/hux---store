@@ -80,7 +80,7 @@ export default async function BoOrderDetail({ params }: { params: Promise<{ numb
 
             {order.installments.length > 0 && (
               <div className="mt-4 space-y-2 border-t border-line pt-3">
-                <p className="data-label text-muted">Boletos</p>
+                <p className="data-label text-muted">Parcelas</p>
                 {order.installments.map((inst) => (
                   <div key={inst.id} className="flex items-center justify-between text-sm">
                     <span className="text-muted">

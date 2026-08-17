@@ -103,31 +103,33 @@ export function OrderActions({
           </button>
         )}
 
-        {status !== "CANCELADO" && status !== "ENTREGUE" && (
+        {status !== "CANCELADO" && (
           <>
             {showCancel ? (
               <div className="space-y-2 rounded-[var(--radius)] border border-negative/30 p-3">
+                <label className="data-label text-muted">Motivo do cancelamento *</label>
                 <input
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
-                  placeholder="Motivo do cancelamento"
+                  placeholder="Ex.: cliente desistiu, troca, erro de lançamento…"
                   className="field py-2.5"
+                  autoFocus
                 />
                 <div className="flex gap-2">
                   <button
-                    disabled={pending}
-                    onClick={() => run(() => cancelOrderAction(number, reason), "Pedido cancelado. Estoque devolvido.")}
-                    className="btn btn-ghost flex-1 border-negative/40 text-negative hover:bg-negative/10"
+                    disabled={pending || reason.trim().length < 3}
+                    onClick={() => run(() => cancelOrderAction(number, reason.trim()), "Venda cancelada. Estoque devolvido.")}
+                    className="btn btn-ghost flex-1 border-negative/40 text-negative hover:bg-negative/10 disabled:opacity-40"
                   >
-                    Confirmar cancelamento
+                    {pending ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={15} />} Confirmar cancelamento
                   </button>
-                  <button onClick={() => setShowCancel(false)} className="btn btn-ghost">Voltar</button>
+                  <button onClick={() => { setShowCancel(false); setReason(""); }} className="btn btn-ghost">Voltar</button>
                 </div>
-                <p className="text-xs text-faint">O estoque dos itens será devolvido automaticamente.</p>
+                <p className="text-xs text-faint">O estoque dos itens volta automaticamente e as parcelas pendentes são canceladas. A venda permanece no histórico como cancelada.</p>
               </div>
             ) : (
               <button onClick={() => setShowCancel(true)} className={`${btn} btn-ghost text-negative`}>
-                <XCircle size={16} /> Cancelar pedido
+                <XCircle size={16} /> Cancelar venda
               </button>
             )}
           </>

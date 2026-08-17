@@ -27,7 +27,7 @@ export const PRODUCT_TYPES = [
   "CAMISA",
   "REGATA",
   "TOP",
-  "LEGGING",
+  "CALCA",
   "SHORT",
   "JAQUETA",
   "MOLETOM",
@@ -40,13 +40,16 @@ export const PRODUCT_TYPE_LABELS: Record<ProductType, string> = {
   CAMISA: "Camisa",
   REGATA: "Regata",
   TOP: "Top",
-  LEGGING: "Legging",
+  CALCA: "Calça",
   SHORT: "Short",
   JAQUETA: "Jaqueta",
   MOLETOM: "Moletom",
   MEIA: "Meia",
   ACESSORIO: "Acessório",
 };
+
+// Compat: produtos antigos podem ter type "LEGGING" — mapeia para o label novo.
+PRODUCT_TYPE_LABELS["LEGGING" as ProductType] = "Calça";
 
 export const SIZES = ["PP", "P", "M", "G", "GG", "XG", "UNICO"] as const;
 export type Size = (typeof SIZES)[number];
@@ -114,7 +117,7 @@ export const ORDER_FLOW: OrderStatus[] = [
 export const PAYMENT_STATUSES = ["PENDENTE", "CONFIRMADO", "ESTORNADO"] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
-export const PAYMENT_METHODS = ["PIX_MANUAL", "BOLETO", "CARTAO", "DINHEIRO", "DEBITO"] as const;
+export const PAYMENT_METHODS = ["PIX_MANUAL", "BOLETO", "CARTAO", "DINHEIRO", "DEBITO", "A_PRAZO"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {
@@ -123,10 +126,11 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CARTAO: "Cartão de crédito",
   DINHEIRO: "Dinheiro",
   DEBITO: "Cartão de débito",
+  A_PRAZO: "A prazo (crediário)",
 };
 
 // Methods available when a staff member registers a physical/manual sale.
-export const MANUAL_PAYMENT_METHODS = ["DINHEIRO", "PIX_MANUAL", "DEBITO", "CARTAO"] as const;
+export const MANUAL_PAYMENT_METHODS = ["DINHEIRO", "PIX_MANUAL", "DEBITO", "CARTAO", "A_PRAZO"] as const;
 
 export const SALE_CHANNELS = ["ONLINE", "MANUAL"] as const;
 export type SaleChannel = (typeof SALE_CHANNELS)[number];
@@ -196,6 +200,7 @@ export const MODULES = [
   { id: "dashboard", label: "Dashboard" },
   { id: "pedidos", label: "Pedidos" },
   { id: "vendas", label: "Vendas" },
+  { id: "aprazo", label: "Vendas a prazo" },
   { id: "boletos", label: "Boletos" },
   { id: "reservas", label: "Reservas" },
   { id: "mala", label: "Mala HUX" },

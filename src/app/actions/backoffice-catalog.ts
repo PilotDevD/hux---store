@@ -43,6 +43,28 @@ function writePosters(slug: string, opts: { brand: string; name: string; type: P
   }
 }
 
+// --------------------------- image upload ----------------------------------
+
+const UPLOAD_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"];
+
+/** Stores an uploaded image in the DB and returns a stable URL (/api/img/<id>). */
+export async function uploadImageAction(
+  formData: FormData,
+): Promise<{ ok: boolean; url?: string; error?: string }> {
+  await requireModule("produtos");
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Arquivo inválido." };
+  if (file.size > 5_000_000) return { ok: false, error: "Imagem muito grande (máx. 5 MB)." };
+  if (!UPLOAD_TYPES.includes(file.type)) return { ok: false, error: "Formato não suportado (use JPG, PNG ou WEBP)." };
+  try {
+    const buf = Buffer.from(await file.arrayBuffer());
+    const up = await db.upload.create({ data: { mimeType: file.type, data: buf, size: buf.length } });
+    return { ok: true, url: `/api/img/${up.id}` };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Falha ao salvar a imagem." };
+  }
+}
+
 // --------------------------- products --------------------------------------
 
 const variantSchema = z.object({
@@ -62,6 +84,7 @@ const productSchema = z.object({
   modelName: z.string().optional(),
   type: z.enum(PRODUCT_TYPES),
   gender: z.enum(GENDERS),
+  supplierCode: z.string().optional(),
   description: z.string().optional(),
   details: z.string().optional(),
   basePrice: z.string(),
@@ -100,7 +123,8 @@ export async function upsertProductAction(
         where: { id: p.id },
         data: {
           brand: p.brand, name: p.name, modelName: p.modelName || null, type: p.type,
-          gender: p.gender, description: p.description || null, details: p.details || null,
+          gender: p.gender, supplierCode: p.supplierCode || null,
+          description: p.description || null, details: p.details || null,
           basePrice, compareAtPrice: compareAt, collectionId: p.collectionId || null,
           featured: !!p.featured, active: p.active ?? true, images,
         },
@@ -153,7 +177,8 @@ export async function upsertProductAction(
     const created = await db.product.create({
       data: {
         slug, brand: p.brand, name: p.name, modelName: p.modelName || null, type: p.type,
-        gender: p.gender, description: p.description || null, details: p.details || null,
+        gender: p.gender, supplierCode: p.supplierCode || null,
+        description: p.description || null, details: p.details || null,
         basePrice, compareAtPrice: compareAt, collectionId: p.collectionId || null,
         featured: !!p.featured, active: p.active ?? true, images: JSON.stringify(images),
         variants: {
@@ -192,12 +217,42 @@ export async function toggleProductActiveAction(id: string, active: boolean) {
   return { ok: true };
 }
 
+/** Soft delete: deactivate the product (keeps it out of the store, preserves data). */
 export async function deleteProductAction(id: string) {
   const staff = await requireModule("produtos");
-  // Soft approach: deactivate to preserve order history; variants deactivated too.
   const p = await db.product.update({ where: { id }, data: { active: false } });
   await db.productVariant.updateMany({ where: { productId: id }, data: { active: false } });
   await logAudit({ staff, action: "DELETE", entity: "Produto", entityId: id, summary: `Removeu (desativou) o produto "${p.name}"` });
+  revalidatePath("/backoffice/produtos");
+  return { ok: true };
+}
+
+/**
+ * Hard delete: permanently removes the product and its variants from the
+ * database. Order history is preserved because OrderItem.variantId is set to
+ * null on delete (each line keeps its own name/size/price snapshot). Blocked if
+ * the product still has stock, to avoid accidental loss.
+ */
+export async function hardDeleteProductAction(
+  id: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const staff = await requireModule("produtos");
+  const product = await db.product.findUnique({ where: { id }, include: { variants: true } });
+  if (!product) return { ok: false, error: "Produto não encontrado." };
+
+  try {
+    await db.$transaction(async (tx) => {
+      // Detach from any promotions (m2m) first.
+      await tx.product.update({ where: { id }, data: { promotions: { set: [] } } });
+      // Deleting the product cascades to its variants (schema onDelete: Cascade),
+      // which in turn set order-item references to null and remove cart items.
+      await tx.product.delete({ where: { id } });
+    });
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Não foi possível excluir. Verifique se há pedidos vinculados." };
+  }
+
+  await logAudit({ staff, action: "DELETE", entity: "Produto", entityId: id, summary: `EXCLUIU DEFINITIVAMENTE o produto "${product.name}" (${product.brand})` });
   revalidatePath("/backoffice/produtos");
   return { ok: true };
 }

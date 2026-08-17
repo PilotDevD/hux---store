@@ -3,6 +3,7 @@ import { getStaff } from "@/lib/auth";
 import { canAccessModule } from "@/lib/access";
 import { MODULES, CONFIG_MODULE } from "@/lib/enums";
 import { BoNav, BoMobileNav } from "@/components/backoffice/bo-nav";
+import { SaleNotifier } from "@/components/backoffice/sale-notifier";
 
 export default async function BackofficePanelLayout({
   children,
@@ -32,6 +33,8 @@ export default async function BackofficePanelLayout({
       <main className="min-w-0 px-5 py-8 md:px-8 lg:py-10">
         <div className="mx-auto max-w-6xl">{children}</div>
       </main>
+
+      <SaleNotifier />
     </div>
   );
 }

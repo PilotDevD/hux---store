@@ -21,6 +21,7 @@ export default async function BoletosPage({ searchParams }: { searchParams: Prom
   const now = new Date();
 
   const installments = await db.installment.findMany({
+    where: { order: { paymentMethod: "BOLETO" } },
     orderBy: [{ status: "asc" }, { dueDate: "asc" }],
     include: {
       order: { select: { number: true, customerSnapshot: true, customer: { select: { name: true } } } },

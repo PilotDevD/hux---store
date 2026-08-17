@@ -93,6 +93,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
                   </div>
                   <p className="font-mono text-xs text-muted">
                     {p.brand} · {PRODUCT_TYPE_LABELS[p.type as ProductType] ?? p.type} · {p.variants.length} variantes
+                    {p.supplierCode ? ` · forn. ${p.supplierCode}` : ""}
                   </p>
                 </div>
                 <div className="hidden text-right sm:block">

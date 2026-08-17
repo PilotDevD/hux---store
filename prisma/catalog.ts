@@ -7,7 +7,7 @@ export type SeedProduct = {
   name: string;
   modelName?: string;
   type:
-    | "CAMISA" | "REGATA" | "TOP" | "LEGGING" | "SHORT"
+    | "CAMISA" | "REGATA" | "TOP" | "CALCA" | "SHORT"
     | "JAQUETA" | "MOLETOM" | "MEIA" | "ACESSORIO";
   gender: "MASCULINO" | "FEMININO" | "UNISSEX";
   description: string;
@@ -120,9 +120,9 @@ export const PRODUCTS: SeedProduct[] = [
   },
   {
     brand: "HUX",
-    name: "Legging Aurora",
+    name: "Calça Legging Aurora",
     modelName: "Aurora",
-    type: "LEGGING",
+    type: "CALCA",
     gender: "FEMININO",
     description: "Legging cintura alta com compressão progressiva e bolso lateral para o celular.",
     details: "Suplex Maxxi · Cintura alta · Compressão progressiva · Bolso lateral · Não-transparente.",
@@ -285,9 +285,9 @@ export const PRODUCTS: SeedProduct[] = [
   },
   {
     brand: "SNUGG",
-    name: "Legging Cloud",
+    name: "Calça Legging Cloud",
     modelName: "Cloud",
-    type: "LEGGING",
+    type: "CALCA",
     gender: "FEMININO",
     description: "Legging de descanso ativo. Toque nuvem, cós que não aperta.",
     details: "Suplex soft · Cintura confortável · Costura minimalista.",

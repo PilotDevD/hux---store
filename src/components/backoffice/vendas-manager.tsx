@@ -35,6 +35,10 @@ export function VendasManager({
   const [note, setNote] = useState("");
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<{ v: VariantOption; qty: number }[]>([]);
+  // Venda a prazo (crediário)
+  const [downPayment, setDownPayment] = useState("");
+  const [aprazoParcelas, setAprazoParcelas] = useState("2");
+  const [firstDueDate, setFirstDueDate] = useState("");
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -43,16 +47,31 @@ export function VendasManager({
 
   const subtotal = cart.reduce((s, x) => s + x.v.price * x.qty, 0);
 
+  // BR-friendly reais → cents (for the a-prazo preview only; server recomputes).
+  const toCents = (s: string) => {
+    const n = Number(String(s).trim().replace(/\./g, "").replace(",", "."));
+    return isNaN(n) ? 0 : Math.round(n * 100);
+  };
+  const totalCents = Math.max(0, subtotal - Math.min(subtotal, toCents(discount)));
+  const entradaCents = Math.min(totalCents, toCents(downPayment));
+  const financedCents = Math.max(0, totalCents - entradaCents);
+  const nParcelas = Math.max(1, Number(aprazoParcelas) || 1);
+  const perParcela = financedCents > 0 ? Math.floor(financedCents / nParcelas) : 0;
+
   function add(v: VariantOption) { setCart((c) => (c.some((x) => x.v.id === v.id) ? c : [...c, { v, qty: 1 }])); setSearch(""); }
   function setQty(id: string, qty: number) { setCart((c) => c.map((x) => (x.v.id === id ? { ...x, qty: Math.max(1, Math.min(x.v.stock, qty)) } : x))); }
-  function reset() { setCustomerName("Cliente balcão"); setCustomerPhone(""); setMethod("DINHEIRO"); setInstallments("1"); setDiscount(""); setNote(""); setCart([]); setSearch(""); }
+  function reset() { setCustomerName("Cliente balcão"); setCustomerPhone(""); setMethod("DINHEIRO"); setInstallments("1"); setDiscount(""); setNote(""); setCart([]); setSearch(""); setDownPayment(""); setAprazoParcelas("2"); setFirstDueDate(""); }
 
   async function save() {
     if (cart.length === 0) return toast("Adicione ao menos um item.", "error");
+    if (method === "A_PRAZO" && financedCents <= 0) return toast("Na venda a prazo, a entrada deve ser menor que o total.", "error");
     setBusy(true);
     const res = await createManualSaleAction({
       customerName, customerPhone, sellerId, paymentMethod: method as never,
       cardInstallments: method === "CARTAO" ? Number(installments) || 1 : undefined,
+      downPayment: method === "A_PRAZO" ? downPayment : undefined,
+      aprazoParcelas: method === "A_PRAZO" ? nParcelas : undefined,
+      firstDueDate: method === "A_PRAZO" && firstDueDate ? firstDueDate : undefined,
       discount, note, items: cart.map((x) => ({ variantId: x.v.id, qty: x.qty })),
     });
     setBusy(false);
@@ -84,7 +103,10 @@ export function VendasManager({
                 <span className="hidden text-sm text-muted md:block">{s.sellerName}</span>
                 <span className="hidden text-sm text-muted md:block">{PAYMENT_METHOD_LABELS[s.paymentMethod] ?? s.paymentMethod}</span>
                 <span className="text-sm font-semibold">{formatCents(s.total)}</span>
-                <Link href={`/backoffice/recibo/${s.number}`} target="_blank" className="justify-self-end text-xs text-orange hover:underline">recibo</Link>
+                <span className="flex items-center justify-end gap-3">
+                  <Link href={`/backoffice/pedidos/${s.number}`} className="text-xs text-ink-soft hover:text-orange hover:underline">gerenciar</Link>
+                  <Link href={`/backoffice/recibo/${s.number}`} target="_blank" className="text-xs text-orange hover:underline">recibo</Link>
+                </span>
               </div>
             ))}
           </div>
@@ -115,6 +137,27 @@ export function VendasManager({
             )}
             <label><span className={label}>Desconto (R$)</span><input className="field" value={discount} onChange={(e) => setDiscount(e.target.value)} placeholder="0,00" inputMode="decimal" /></label>
           </div>
+
+          {method === "A_PRAZO" && (
+            <div className="grid gap-4 rounded-[var(--radius)] border border-orange/30 bg-orange/5 p-4 sm:grid-cols-3">
+              <label><span className={label}>Entrada (R$)</span>
+                <input className="field" value={downPayment} onChange={(e) => setDownPayment(e.target.value)} placeholder="0,00" inputMode="decimal" />
+              </label>
+              <label><span className={label}>Parcelas</span>
+                <select className="field" value={aprazoParcelas} onChange={(e) => setAprazoParcelas(e.target.value)}>
+                  {Array.from({ length: 24 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}x</option>)}
+                </select>
+              </label>
+              <label><span className={label}>1º vencimento</span>
+                <input type="date" className="field" value={firstDueDate} onChange={(e) => setFirstDueDate(e.target.value)} />
+              </label>
+              <p className="sm:col-span-3 text-xs text-ink-soft">
+                {financedCents > 0
+                  ? <>Financiado <strong>{formatCents(financedCents)}</strong> em <strong>{nParcelas}x</strong> de aprox. <strong>{formatCents(perParcela)}</strong>{entradaCents > 0 ? <> · entrada {formatCents(entradaCents)}</> : null}. Se o vencimento ficar em branco, começa no próximo mês.</>
+                  : <span className="text-negative">A entrada precisa ser menor que o total ({formatCents(totalCents)}).</span>}
+              </p>
+            </div>
+          )}
 
           <div>
             <span className={label}>Itens *</span>

@@ -30,6 +30,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
     modelName: product.modelName ?? "",
     type: product.type,
     gender: product.gender,
+    supplierCode: product.supplierCode ?? "",
     description: product.description ?? "",
     details: product.details ?? "",
     basePrice: reais(product.basePrice),
