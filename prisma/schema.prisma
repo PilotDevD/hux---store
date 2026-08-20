@@ -267,9 +267,62 @@ model Order {
   items     OrderItem[]
   events    OrderEvent[]
   installments Installment[]
+  returns   ReturnRequest[]
 
   @@index([customerId])
   @@index([status])
+}
+
+// ----------------------------- Trocas & devoluções --------------------------
+// Uma solicitação processada de troca/devolução ligada a um pedido. Devolver
+// repõe o estoque e gera reembolso; trocar repõe o item antigo, baixa o novo e
+// calcula a diferença de preço. O pedido original é preservado no histórico.
+model ReturnRequest {
+  id           String   @id @default(cuid())
+  number       String   @unique // TR<yy>-xxxxxx
+  orderId      String
+  orderNumber  String            // snapshot p/ histórico
+  type         String   @default("DEVOLUCAO") // DEVOLUCAO | TROCA
+  reason       String
+  customerName String
+  refundAmount Int      @default(0) // cents devolvidos ao cliente
+  exchangeDiff Int      @default(0) // cents (+ a cobrar / - a devolver) nas trocas
+  handledById  String?
+  handledByName String?
+  createdAt    DateTime @default(now())
+
+  order Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  items ReturnItem[]
+
+  @@index([orderId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model ReturnItem {
+  id           String @id @default(cuid())
+  returnId     String
+  orderItemId  String?
+  mode         String @default("DEVOLVER") // DEVOLVER | TROCAR
+  // item original devolvido
+  variantId    String?
+  productName  String
+  size         String
+  color        String
+  sku          String
+  qty          Int
+  unitPrice    Int
+  // item novo (apenas em troca)
+  newVariantId  String?
+  newProductName String?
+  newSize       String?
+  newColor      String?
+  newSku        String?
+  newUnitPrice  Int?
+
+  request ReturnRequest @relation(fields: [returnId], references: [id], onDelete: Cascade)
+
+  @@index([returnId])
 }
 
 // Boleto installments (parcelas). One row per boleto; a "1x boleto" has a single

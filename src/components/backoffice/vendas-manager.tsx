@@ -1,25 +1,22 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, Loader2, Receipt, Search, X, Minus } from "lucide-react";
+import { Plus, Loader2, Search, X, Minus } from "lucide-react";
 import { createManualSaleAction } from "@/app/actions/backoffice-vendas";
 import { Modal } from "./modal";
 import { useToast } from "@/components/ui/toast";
 import { formatCents } from "@/lib/money";
-import { formatDate, cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { MANUAL_PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from "@/lib/enums";
 
 export type VariantOption = { id: string; label: string; stock: number; price: number };
-export type SaleRow = { number: string; customerName: string; sellerName: string; total: number; paymentMethod: string; createdAt: string };
 
 export function VendasManager({
-  variants, sellers, sales,
+  variants, sellers,
 }: {
   variants: VariantOption[];
   sellers: { id: string; name: string }[];
-  sales: SaleRow[];
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -83,34 +80,8 @@ export function VendasManager({
 
   return (
     <>
-      <div className="mb-6 flex justify-end">
+      <div className="flex justify-end">
         <button onClick={() => setOpen(true)} className="btn btn-primary"><Plus size={16} /> Nova venda física</button>
-      </div>
-
-      <div className="card overflow-hidden">
-        <div className="border-b border-line px-5 py-3"><p className="eyebrow">Vendas físicas recentes</p></div>
-        {sales.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 p-10 text-center">
-            <div className="grid size-12 place-items-center rounded-full border border-line"><Receipt size={20} className="text-faint" /></div>
-            <p className="text-sm text-muted">Nenhuma venda física registrada ainda.</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-line">
-            {sales.map((s) => (
-              <div key={s.number} className="grid grid-cols-2 items-center gap-3 px-5 py-3 md:grid-cols-[1fr_1.2fr_1fr_1fr_0.8fr_auto]">
-                <span className="font-mono text-sm font-semibold">{s.number}</span>
-                <span className="truncate text-sm text-ink-soft">{s.customerName}</span>
-                <span className="hidden text-sm text-muted md:block">{s.sellerName}</span>
-                <span className="hidden text-sm text-muted md:block">{PAYMENT_METHOD_LABELS[s.paymentMethod] ?? s.paymentMethod}</span>
-                <span className="text-sm font-semibold">{formatCents(s.total)}</span>
-                <span className="flex items-center justify-end gap-3">
-                  <Link href={`/backoffice/pedidos/${s.number}`} className="text-xs text-ink-soft hover:text-orange hover:underline">gerenciar</Link>
-                  <Link href={`/backoffice/recibo/${s.number}`} target="_blank" className="text-xs text-orange hover:underline">recibo</Link>
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       <Modal open={open} onClose={() => setOpen(false)} title="Nova venda física" wide>

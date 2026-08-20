@@ -171,6 +171,14 @@ export const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
   OUTROS: "Outros",
 };
 
+export const RETURN_TYPES = ["DEVOLUCAO", "TROCA"] as const;
+export type ReturnType = (typeof RETURN_TYPES)[number];
+export const RETURN_TYPE_LABELS: Record<string, string> = {
+  DEVOLUCAO: "Devolução",
+  TROCA: "Troca",
+};
+export const RETURN_ITEM_MODES = ["DEVOLVER", "TROCAR"] as const;
+
 export const INSTALLMENT_STATUSES = ["PENDENTE", "PAGO", "CANCELADO"] as const;
 export type InstallmentStatus = (typeof INSTALLMENT_STATUSES)[number];
 
@@ -201,6 +209,7 @@ export const MODULES = [
   { id: "pedidos", label: "Pedidos" },
   { id: "vendas", label: "Vendas" },
   { id: "aprazo", label: "Vendas a prazo" },
+  { id: "trocas", label: "Trocas & Devoluções" },
   { id: "boletos", label: "Boletos" },
   { id: "reservas", label: "Reservas" },
   { id: "mala", label: "Mala HUX" },
