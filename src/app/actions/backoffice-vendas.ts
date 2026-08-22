@@ -6,8 +6,25 @@ import { db } from "@/lib/db";
 import { requireModule } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { computePrice, getActivePromotions } from "@/lib/pricing";
+import { validateCoupon } from "@/lib/coupon";
 import { parseReaisToCents, formatCents } from "@/lib/money";
 import { MANUAL_PAYMENT_METHODS } from "@/lib/enums";
+
+/** Validate a coupon for a physical sale (no customer, no shipping). */
+export async function validateSaleCouponAction(
+  code: string,
+  subtotalCents: number,
+): Promise<{ ok: boolean; error?: string; code?: string; type?: string; value?: number; minOrder?: number; discountCents?: number; description?: string }> {
+  await requireModule("vendas");
+  const res = await validateCoupon(code, Math.max(0, Math.round(subtotalCents)), null);
+  if (!res.ok) return { ok: false, error: res.error };
+  if (res.type === "FREE_SHIPPING") return { ok: false, error: "Cupom de frete grátis não se aplica a vendas físicas (sem frete)." };
+  const coupon = await db.coupon.findUnique({ where: { code: res.code! } });
+  return {
+    ok: true, code: res.code, type: res.type, value: coupon?.value ?? 0,
+    minOrder: coupon?.minOrder ?? 0, discountCents: res.discountCents ?? 0, description: res.description,
+  };
+}
 
 function manualOrderNumber(): string {
   const yy = new Date().getFullYear().toString().slice(-2);
@@ -36,6 +53,7 @@ const schema = z.object({
   paymentMethod: z.enum(MANUAL_PAYMENT_METHODS),
   cardInstallments: z.coerce.number().int().min(1).max(12).optional(),
   discount: z.string().optional(),
+  couponCode: z.string().optional(),
   note: z.string().optional(),
   // Vendas a prazo (crediário)
   downPayment: z.string().optional(),
@@ -61,7 +79,22 @@ export async function createManualSaleAction(input: z.input<typeof schema>): Pro
   }
 
   const subtotal = lines.reduce((s, l) => s + l.unitPrice * l.qty, 0);
-  const discountTotal = Math.min(subtotal, d.discount ? parseReaisToCents(d.discount) : 0);
+
+  // --- coupon (validated server-side, same rules as the online checkout) ---
+  let couponDiscount = 0;
+  let couponId: string | null = null;
+  let couponCode: string | null = null;
+  if (d.couponCode && d.couponCode.trim()) {
+    const res = await validateCoupon(d.couponCode, subtotal, null);
+    if (!res.ok) return { ok: false, error: res.error ?? "Cupom inválido." };
+    if (res.type === "FREE_SHIPPING") return { ok: false, error: "Cupom de frete grátis não se aplica a vendas físicas (sem frete)." };
+    couponDiscount = res.discountCents ?? 0;
+    couponId = res.couponId ?? null;
+    couponCode = res.code ?? null;
+  }
+
+  const manualDiscount = d.discount ? parseReaisToCents(d.discount) : 0;
+  const discountTotal = Math.min(subtotal, couponDiscount + manualDiscount);
   const total = subtotal - discountTotal;
   const costTotal = lines.reduce((s, l) => s + l.unitCost * l.qty, 0);
   const number = manualOrderNumber();
@@ -102,6 +135,7 @@ export async function createManualSaleAction(input: z.input<typeof schema>): Pro
           paymentStatus: isAprazo ? "PENDENTE" : "CONFIRMADO",
           cardInstallments: d.paymentMethod === "CARTAO" ? (d.cardInstallments ?? 1) : null,
           downPayment: isAprazo ? entrada : 0,
+          couponId, couponCode,
           subtotal, discountTotal, shippingTotal: 0, total, costTotal,
           shippingLabel: "Venda física / balcão", addressSnapshot: "{}",
           customerSnapshot: JSON.stringify({ name: d.customerName, email: "", phone: d.customerPhone ?? null }),
@@ -122,6 +156,9 @@ export async function createManualSaleAction(input: z.input<typeof schema>): Pro
             : undefined,
         },
       });
+      if (couponId) {
+        await tx.coupon.update({ where: { id: couponId }, data: { usedCount: { increment: 1 } } });
+      }
     });
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Erro ao registrar venda." };

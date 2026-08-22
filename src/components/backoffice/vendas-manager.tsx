@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Loader2, Search, X, Minus } from "lucide-react";
-import { createManualSaleAction } from "@/app/actions/backoffice-vendas";
+import { Plus, Loader2, Search, X, Minus, Ticket, Check } from "lucide-react";
+import { createManualSaleAction, validateSaleCouponAction } from "@/app/actions/backoffice-vendas";
 import { Modal } from "./modal";
 import { useToast } from "@/components/ui/toast";
 import { formatCents } from "@/lib/money";
@@ -32,6 +32,10 @@ export function VendasManager({
   const [note, setNote] = useState("");
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<{ v: VariantOption; qty: number }[]>([]);
+  // Cupom
+  const [couponInput, setCouponInput] = useState("");
+  const [coupon, setCoupon] = useState<{ code: string; type: string; value: number; minOrder: number; description?: string } | null>(null);
+  const [couponBusy, setCouponBusy] = useState(false);
   // Venda a prazo (crediário)
   const [downPayment, setDownPayment] = useState("");
   const [aprazoParcelas, setAprazoParcelas] = useState("2");
@@ -49,7 +53,18 @@ export function VendasManager({
     const n = Number(String(s).trim().replace(/\./g, "").replace(",", "."));
     return isNaN(n) ? 0 : Math.round(n * 100);
   };
-  const totalCents = Math.max(0, subtotal - Math.min(subtotal, toCents(discount)));
+  // Coupon discount recomputed live against the current subtotal.
+  const couponDiscountCents = useMemo(() => {
+    if (!coupon || subtotal <= 0 || subtotal < coupon.minOrder) return 0;
+    if (coupon.type === "PERCENT") return Math.round(subtotal * (coupon.value / 100));
+    if (coupon.type === "FIXED") return Math.min(coupon.value, subtotal);
+    return 0;
+  }, [coupon, subtotal]);
+  const couponBelowMin = !!coupon && subtotal > 0 && subtotal < coupon.minOrder;
+
+  const manualDiscountCents = toCents(discount);
+  const discountTotalCents = Math.min(subtotal, couponDiscountCents + manualDiscountCents);
+  const totalCents = Math.max(0, subtotal - discountTotalCents);
   const entradaCents = Math.min(totalCents, toCents(downPayment));
   const financedCents = Math.max(0, totalCents - entradaCents);
   const nParcelas = Math.max(1, Number(aprazoParcelas) || 1);
@@ -57,10 +72,24 @@ export function VendasManager({
 
   function add(v: VariantOption) { setCart((c) => (c.some((x) => x.v.id === v.id) ? c : [...c, { v, qty: 1 }])); setSearch(""); }
   function setQty(id: string, qty: number) { setCart((c) => c.map((x) => (x.v.id === id ? { ...x, qty: Math.max(1, Math.min(x.v.stock, qty)) } : x))); }
-  function reset() { setCustomerName("Cliente balcão"); setCustomerPhone(""); setMethod("DINHEIRO"); setInstallments("1"); setDiscount(""); setNote(""); setCart([]); setSearch(""); setDownPayment(""); setAprazoParcelas("2"); setFirstDueDate(""); }
+  function reset() { setCustomerName("Cliente balcão"); setCustomerPhone(""); setMethod("DINHEIRO"); setInstallments("1"); setDiscount(""); setNote(""); setCart([]); setSearch(""); setDownPayment(""); setAprazoParcelas("2"); setFirstDueDate(""); setCouponInput(""); setCoupon(null); }
+
+  async function applyCoupon() {
+    const code = couponInput.trim();
+    if (!code) return;
+    if (subtotal <= 0) return toast("Adicione itens antes de aplicar o cupom.", "error");
+    setCouponBusy(true);
+    const res = await validateSaleCouponAction(code, subtotal);
+    setCouponBusy(false);
+    if (!res.ok) { setCoupon(null); return toast(res.error ?? "Cupom inválido.", "error"); }
+    setCoupon({ code: res.code!, type: res.type ?? "", value: res.value ?? 0, minOrder: res.minOrder ?? 0, description: res.description });
+    toast(`Cupom ${res.code} aplicado.`, "success");
+  }
+  function removeCoupon() { setCoupon(null); setCouponInput(""); }
 
   async function save() {
     if (cart.length === 0) return toast("Adicione ao menos um item.", "error");
+    if (couponBelowMin) return toast("Subtotal abaixo do mínimo do cupom. Remova o cupom ou ajuste os itens.", "error");
     if (method === "A_PRAZO" && financedCents <= 0) return toast("Na venda a prazo, a entrada deve ser menor que o total.", "error");
     setBusy(true);
     const res = await createManualSaleAction({
@@ -69,6 +98,7 @@ export function VendasManager({
       downPayment: method === "A_PRAZO" ? downPayment : undefined,
       aprazoParcelas: method === "A_PRAZO" ? nParcelas : undefined,
       firstDueDate: method === "A_PRAZO" && firstDueDate ? firstDueDate : undefined,
+      couponCode: coupon?.code,
       discount, note, items: cart.map((x) => ({ variantId: x.v.id, qty: x.qty })),
     });
     setBusy(false);
@@ -107,6 +137,36 @@ export function VendasManager({
               </label>
             )}
             <label><span className={label}>Desconto (R$)</span><input className="field" value={discount} onChange={(e) => setDiscount(e.target.value)} placeholder="0,00" inputMode="decimal" /></label>
+          </div>
+
+          {/* Cupom de desconto */}
+          <div className="rounded-[var(--radius)] border border-line p-3">
+            {!coupon ? (
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Ticket size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+                  <input
+                    className="field py-2.5 pl-9 uppercase"
+                    value={couponInput}
+                    onChange={(e) => setCouponInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); applyCoupon(); } }}
+                    placeholder="Cupom de desconto (opcional)"
+                  />
+                </div>
+                <button onClick={applyCoupon} disabled={couponBusy} className="btn btn-light">
+                  {couponBusy ? <Loader2 size={16} className="animate-spin" /> : <Ticket size={16} />} Aplicar
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex min-w-0 items-center gap-2 text-sm">
+                  <span className="inline-flex items-center gap-1 rounded-full border border-positive/40 bg-positive/10 px-2.5 py-1 font-mono text-xs font-semibold text-positive"><Check size={12} /> {coupon.code}</span>
+                  <span className="truncate text-muted">{coupon.description ?? (coupon.type === "PERCENT" ? `${coupon.value}% de desconto` : coupon.type === "FIXED" ? `${formatCents(coupon.value)} de desconto` : "")}</span>
+                </span>
+                <button onClick={removeCoupon} className="text-faint hover:text-negative" title="Remover cupom"><X size={16} /></button>
+              </div>
+            )}
+            {couponBelowMin && coupon && <p className="mt-2 text-xs text-negative">Este cupom exige subtotal mínimo de {formatCents(coupon.minOrder)}.</p>}
           </div>
 
           {method === "A_PRAZO" && (
@@ -162,8 +222,15 @@ export function VendasManager({
                   <button onClick={() => setCart((c) => c.filter((y) => y.v.id !== x.v.id))} className="text-faint hover:text-negative"><X size={15} /></button>
                 </div>
               ))}
-              <div className="flex justify-between border-t border-line pt-2 text-sm font-semibold">
-                <span>Subtotal</span><span>{formatCents(subtotal)}</span>
+              <div className="space-y-1 border-t border-line pt-2 text-sm">
+                <div className="flex justify-between text-muted"><span>Subtotal</span><span>{formatCents(subtotal)}</span></div>
+                {couponDiscountCents > 0 && (
+                  <div className="flex justify-between text-positive"><span>Cupom {coupon?.code}</span><span>− {formatCents(couponDiscountCents)}</span></div>
+                )}
+                {manualDiscountCents > 0 && (
+                  <div className="flex justify-between text-muted"><span>Desconto manual</span><span>− {formatCents(manualDiscountCents)}</span></div>
+                )}
+                <div className="flex justify-between border-t border-line pt-1 font-semibold"><span>Total</span><span>{formatCents(totalCents)}</span></div>
               </div>
             </div>
           )}
