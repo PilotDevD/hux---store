@@ -38,7 +38,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
     const paid = c.orders.filter((o) => o.paymentStatus === "CONFIRMADO");
     const spent = paid.reduce((s, o) => s + o.total, 0);
     return {
-      id: c.id, name: c.name, email: c.email, phone: c.phone,
+      id: c.id, name: c.name, email: c.email, phone: c.phone, origin: c.origin,
       createdAt: c.createdAt, orderCount: c.orders.length, spent,
     };
   });
@@ -64,8 +64,11 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
             <Link key={c.id} href={`/backoffice/clientes/${c.id}`} className="flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-elevated">
               <div className="grid size-10 shrink-0 place-items-center rounded-full bg-elevated font-display text-sm text-orange">{initials(c.name)}</div>
               <div className="min-w-0 flex-1">
-                <p className="truncate font-semibold">{c.name}</p>
-                <p className="truncate text-xs text-muted">{c.email}{c.phone ? ` · ${c.phone}` : ""}</p>
+                <p className="flex items-center gap-2 truncate font-semibold">
+                  {c.name}
+                  {c.origin === "BALCAO" && <span className="shrink-0 rounded bg-elevated px-1.5 py-0.5 text-[0.6rem] font-medium uppercase text-muted">Balcão</span>}
+                </p>
+                <p className="truncate text-xs text-muted">{c.email ?? "sem e-mail"}{c.phone ? ` · ${c.phone}` : ""}</p>
               </div>
               <div className="hidden text-right sm:block">
                 <p className="text-sm font-semibold">{formatCents(c.spent)}</p>

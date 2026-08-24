@@ -8,7 +8,7 @@ import {
 } from "@/app/actions/backoffice-catalog";
 import { useToast } from "@/components/ui/toast";
 import {
-  BRANDS, GENDERS, GENDER_LABELS, PRODUCT_TYPES, PRODUCT_TYPE_LABELS, SIZES, SIZE_LABELS,
+  GENDERS, GENDER_LABELS, PRODUCT_TYPES, PRODUCT_TYPE_LABELS, SIZES, SIZE_LABELS,
 } from "@/lib/enums";
 
 type VariantRow = {
@@ -50,9 +50,11 @@ async function shrinkImage(file: File, maxDim = 1400, quality = 0.85): Promise<B
 export function ProductForm({
   initial,
   collections,
+  brands,
 }: {
   initial?: ProductFormInitial;
   collections: { id: string; name: string }[];
+  brands: string[];
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -66,7 +68,7 @@ export function ProductForm({
 
   const [f, setF] = useState<ProductFormInitial>(
     initial ?? {
-      brand: "HUX", name: "", modelName: "", type: "CAMISA", gender: "UNISSEX",
+      brand: brands[0] ?? "HUX", name: "", modelName: "", type: "CAMISA", gender: "UNISSEX",
       supplierCode: "",
       description: "", details: "", basePrice: "", compareAtPrice: "",
       collectionId: "", featured: false, active: true, images: "",
@@ -194,7 +196,7 @@ export function ProductForm({
           </label>
           <label><span className={label}>Marca *</span>
             <select className="field" value={f.brand} onChange={(e) => set("brand", e.target.value)}>
-              {BRANDS.map((b) => <option key={b} value={b}>{b}</option>)}
+              {(f.brand && !brands.includes(f.brand) ? [f.brand, ...brands] : brands).map((bnd) => <option key={bnd} value={bnd}>{bnd}</option>)}
             </select>
           </label>
           <label><span className={label}>Tipo *</span>
@@ -325,6 +327,11 @@ export function ProductForm({
           <h2 className="headline text-lg">Variantes (cor / tamanho)</h2>
           <button onClick={addVariant} className="btn btn-ghost px-3 py-2 text-xs"><Plus size={14} /> Adicionar</button>
         </div>
+        {f.id && (
+          <p className="mb-3 text-xs text-faint">
+            O estoque das variantes existentes é gerenciado na aba <strong>Estoque</strong> (com histórico). Editar o produto aqui não altera o estoque.
+          </p>
+        )}
         <div className="space-y-3">
           {f.variants.map((v, i) => (
             <div key={i} className="grid grid-cols-2 gap-2 rounded-[var(--radius)] border border-line p-3 sm:grid-cols-[80px_1fr_60px_1fr_1fr_1fr_auto]">
@@ -339,8 +346,15 @@ export function ProductForm({
               <label><span className="data-label text-faint">Hex</span>
                 <input type="color" className="mt-1 h-9 w-full cursor-pointer rounded border border-line bg-void" value={v.colorHex} onChange={(e) => setVariant(i, "colorHex", e.target.value)} />
               </label>
-              <label><span className="data-label text-faint">Estoque</span>
-                <input className="field mt-1 py-2" value={v.stock} onChange={(e) => setVariant(i, "stock", e.target.value)} inputMode="numeric" />
+              <label><span className="data-label text-faint">Estoque{v.id ? " (em Estoque)" : ""}</span>
+                <input
+                  className="field mt-1 py-2 disabled:opacity-60"
+                  value={v.stock}
+                  onChange={(e) => setVariant(i, "stock", e.target.value)}
+                  inputMode="numeric"
+                  disabled={!!v.id}
+                  title={v.id ? "O estoque desta variante é ajustado na aba Estoque (com histórico de movimentações)." : "Estoque inicial da nova variante"}
+                />
               </label>
               <label><span className="data-label text-faint">Custo R$</span>
                 <input className="field mt-1 py-2" value={v.cost} onChange={(e) => setVariant(i, "cost", e.target.value)} placeholder="0,00" inputMode="decimal" />

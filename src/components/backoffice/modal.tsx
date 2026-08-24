@@ -9,30 +9,36 @@ export function Modal({
   title,
   children,
   wide = false,
+  dismissible = true,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: React.ReactNode;
   wide?: boolean;
+  /** When false, clicking the backdrop or pressing Esc won't close the modal
+   * (prevents losing a long form by an accidental outside click). */
+  dismissible?: boolean;
 }) {
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && dismissible) onClose();
+    };
     document.addEventListener("keydown", onKey);
     document.body.classList.add("no-scroll");
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.classList.remove("no-scroll");
     };
-  }, [open, onClose]);
+  }, [open, onClose, dismissible]);
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-[160] flex items-start justify-center overflow-y-auto bg-void/70 p-4 backdrop-blur-sm sm:p-8">
       <div
-        onClick={onClose}
+        onClick={dismissible ? onClose : undefined}
         className="fixed inset-0"
         aria-hidden
       />

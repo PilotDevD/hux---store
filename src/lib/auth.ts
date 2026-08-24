@@ -116,7 +116,7 @@ export const getCustomer = cache(async (): Promise<CustomerSession | null> => {
   return {
     id: customer.id,
     name: customer.name,
-    email: customer.email,
+    email: customer.email ?? "",
     phone: customer.phone,
   };
 });

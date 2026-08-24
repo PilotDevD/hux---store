@@ -91,7 +91,7 @@ export function TrocasManager({ variants }: { variants: VariantOption[] }) {
         <button onClick={() => setOpen(true)} className="btn btn-primary"><Plus size={16} /> Nova troca / devolução</button>
       </div>
 
-      <Modal open={open} onClose={close} title="Troca / devolução" wide>
+      <Modal open={open} onClose={close} title="Troca / devolução" wide dismissible={false}>
         <div className="space-y-4">
           {/* Search order */}
           <div>

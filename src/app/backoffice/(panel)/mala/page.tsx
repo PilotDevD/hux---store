@@ -28,7 +28,7 @@ export default async function MalaPage() {
     id: m.id, customerName: m.customerName, customerPhone: m.customerPhone, notes: m.notes,
     status: m.status, createdAt: m.createdAt.toISOString(), expiresAt: m.expiresAt.toISOString(),
     orderNumber: m.orderNumber,
-    items: m.items.map((i) => ({ id: i.id, productName: i.productName, brand: i.brand, size: i.size, color: i.color, qty: i.qty, unitPrice: i.unitPrice, decision: i.decision })),
+    items: m.items.map((i) => ({ id: i.id, variantId: i.variantId, productName: i.productName, brand: i.brand, size: i.size, color: i.color, qty: i.qty, unitPrice: i.unitPrice, decision: i.decision })),
   }));
 
   return (

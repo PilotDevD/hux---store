@@ -2,17 +2,18 @@ import Link from "next/link";
 import Image from "next/image";
 import { ArrowRight, ArrowUpRight, Wind, Timer, ShieldCheck, Recycle } from "lucide-react";
 import { getFeaturedProducts, getNewArrivals, getCollectionsWithCover } from "@/lib/catalog";
-import { BRANDS, BRAND_INFO } from "@/lib/enums";
+import { getBrands } from "@/lib/brands";
 import { ProductCard } from "@/components/store/product-card";
 import { SectionHeading } from "@/components/site/section-heading";
 import { Marquee } from "@/components/site/marquee";
 import { Reveal } from "@/components/ui/reveal";
 
 export default async function HomePage() {
-  const [featuredRaw, newArrivals, collections] = await Promise.all([
+  const [featuredRaw, newArrivals, collections, brands] = await Promise.all([
     getFeaturedProducts(8),
     getNewArrivals(12),
     getCollectionsWithCover(),
+    getBrands(),
   ]);
   // Fill the drop grid to a clean multiple of the column count (4 desktop / 2 mobile)
   // by topping up featured products with the latest arrivals (no duplicates).
@@ -125,45 +126,41 @@ export default async function HomePage() {
             />
           </Reveal>
           <div className="mt-12 grid gap-4 md:grid-cols-2">
-            {BRANDS.map((brand, i) => {
-              const info = BRAND_INFO[brand];
-              return (
-                <Reveal key={brand} delay={i * 80}>
+            {brands.map((b, i) => (
+                <Reveal key={b.name} delay={i * 80}>
                   <Link
-                    href={`/loja?marca=${brand}`}
+                    href={`/loja?marca=${b.name}`}
                     className="group relative flex flex-col justify-between overflow-hidden rounded-[var(--radius-lg)] border border-line bg-graphite p-8 transition-colors hover:border-[color:var(--accent)] md:min-h-[280px]"
-                    style={{ ["--accent" as string]: info.accent }}
+                    style={{ ["--accent" as string]: b.accent }}
                   >
                     <div
                       className="glow-orange absolute -right-20 -top-20 h-56 w-56 opacity-0 transition-opacity duration-500 group-hover:opacity-70"
-                      style={{ background: `radial-gradient(circle, ${info.accent}55, transparent 68%)` }}
+                      style={{ background: `radial-gradient(circle, ${b.accent}55, transparent 68%)` }}
                     />
                     <div className="relative z-[1] flex items-start justify-between">
                       <span
                         className="font-display text-5xl uppercase md:text-6xl"
                         style={{ color: "var(--color-ink)" }}
                       >
-                        {brand}
+                        {b.name}
                       </span>
                       <ArrowUpRight
                         size={28}
                         className="text-faint transition-all duration-300 group-hover:-translate-y-1 group-hover:translate-x-1"
-                        style={{ color: info.accent }}
+                        style={{ color: b.accent }}
                       />
                     </div>
                     <div className="relative z-[1] mt-8">
-                      <span
-                        className="chip mb-3"
-                        style={{ borderColor: `${info.accent}66`, color: info.accent }}
-                      >
-                        {info.tagline}
-                      </span>
-                      <p className="max-w-md text-sm leading-relaxed text-muted">{info.blurb}</p>
+                      {b.tagline && (
+                        <span className="chip mb-3" style={{ borderColor: `${b.accent}66`, color: b.accent }}>
+                          {b.tagline}
+                        </span>
+                      )}
+                      <p className="max-w-md text-sm leading-relaxed text-muted">{b.blurb}</p>
                     </div>
                   </Link>
                 </Reveal>
-              );
-            })}
+            ))}
           </div>
         </div>
       </section>

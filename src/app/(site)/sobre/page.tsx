@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, Target, Recycle, HeartPulse, Sparkles } from "lucide-react";
-import { BRANDS, BRAND_INFO } from "@/lib/enums";
+import { getBrands } from "@/lib/brands";
 import { SectionHeading } from "@/components/site/section-heading";
 import { Marquee } from "@/components/site/marquee";
 import { Reveal } from "@/components/ui/reveal";
@@ -18,7 +18,8 @@ const VALUES = [
   { icon: Sparkles, t: "Comunidade", d: "Corremos junto. A HUX é feita com e para quem calça o tênis toda manhã." },
 ];
 
-export default function SobrePage() {
+export default async function SobrePage() {
+  const brands = await getBrands();
   return (
     <>
       <section className="relative overflow-hidden border-b border-line">
@@ -80,19 +81,16 @@ export default function SobrePage() {
       <section className="container-hux py-16 md:py-24">
         <Reveal><SectionHeading eyebrow="Casa de marcas" title="Quatro caminhos" link="/loja" linkLabel="Ver a loja" /></Reveal>
         <div className="mt-12 space-y-3">
-          {BRANDS.map((brand, i) => {
-            const info = BRAND_INFO[brand];
-            return (
-              <Reveal key={brand} delay={i * 60}>
-                <Link href={`/loja?marca=${brand}`} className="group flex flex-col gap-3 rounded-[var(--radius-lg)] border border-line p-6 transition-colors hover:border-[color:var(--a)] md:flex-row md:items-center md:gap-8" style={{ ["--a" as string]: info.accent }}>
-                  <span className="font-display text-4xl uppercase md:w-48 md:text-5xl">{brand}</span>
-                  <span className="chip w-fit" style={{ borderColor: `${info.accent}66`, color: info.accent }}>{info.tagline}</span>
-                  <p className="flex-1 text-sm text-muted">{info.blurb}</p>
-                  <ArrowRight size={20} className="hidden text-faint transition-transform group-hover:translate-x-1 md:block" style={{ color: info.accent }} />
+          {brands.map((b, i) => (
+              <Reveal key={b.name} delay={i * 60}>
+                <Link href={`/loja?marca=${b.name}`} className="group flex flex-col gap-3 rounded-[var(--radius-lg)] border border-line p-6 transition-colors hover:border-[color:var(--a)] md:flex-row md:items-center md:gap-8" style={{ ["--a" as string]: b.accent }}>
+                  <span className="font-display text-4xl uppercase md:w-48 md:text-5xl">{b.name}</span>
+                  {b.tagline && <span className="chip w-fit" style={{ borderColor: `${b.accent}66`, color: b.accent }}>{b.tagline}</span>}
+                  <p className="flex-1 text-sm text-muted">{b.blurb}</p>
+                  <ArrowRight size={20} className="hidden text-faint transition-transform group-hover:translate-x-1 md:block" style={{ color: b.accent }} />
                 </Link>
               </Reveal>
-            );
-          })}
+          ))}
         </div>
       </section>
 

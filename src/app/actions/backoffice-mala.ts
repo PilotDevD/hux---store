@@ -65,6 +65,86 @@ export async function createMalaAction(input: z.input<typeof createSchema>): Pro
   return { ok: true };
 }
 
+const editSchema = z.object({
+  malaId: z.string().min(1),
+  customerName: z.string().min(2, "Informe o cliente."),
+  customerPhone: z.string().optional(),
+  notes: z.string().optional(),
+  prazoDays: z.coerce.number().int().min(1).max(60),
+  items: z.array(z.object({ variantId: z.string().min(1), qty: z.coerce.number().int().positive() })).min(1, "Adicione ao menos um produto."),
+});
+
+/** Edita uma mala aberta: dados do cliente, prazo e itens (com acerto de estoque). */
+export async function editMalaAction(input: z.input<typeof editSchema>): Promise<{ ok: boolean; error?: string }> {
+  const staff = await requireModule("mala");
+  const parsed = editSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? "Dados inválidos." };
+  const { malaId, customerName, customerPhone, notes, prazoDays, items } = parsed.data;
+
+  const mala = await db.mala.findUnique({ where: { id: malaId }, include: { items: true } });
+  if (!mala) return { ok: false, error: "Mala não encontrada." };
+  if (mala.status !== "COM_CLIENTE") return { ok: false, error: "Só é possível editar malas em aberto." };
+
+  // Dedupe requested items by variant.
+  const newMap = new Map<string, number>();
+  for (const it of items) newMap.set(it.variantId, (newMap.get(it.variantId) ?? 0) + it.qty);
+  const oldMap = new Map<string, { qty: number; itemId: string }>();
+  for (const it of mala.items) oldMap.set(it.variantId, { qty: it.qty, itemId: it.id });
+
+  const promos = await getActivePromotions();
+  const expiresAt = new Date(mala.createdAt);
+  expiresAt.setDate(expiresAt.getDate() + prazoDays);
+
+  try {
+    await db.$transaction(async (tx) => {
+      // Handle variants present in the new list (add / change qty).
+      for (const [variantId, newQty] of newMap) {
+        const old = oldMap.get(variantId);
+        const delta = newQty - (old?.qty ?? 0);
+        if (delta > 0) {
+          const v = await tx.productVariant.findUnique({ where: { id: variantId }, include: { product: true } });
+          if (!v || !v.active) throw new Error("Produto indisponível na mala.");
+          if (v.stock < delta) throw new Error(`Estoque insuficiente para ${v.product.name} (${v.size}/${v.color}).`);
+          await tx.productVariant.update({ where: { id: variantId }, data: { stock: { decrement: delta } } });
+          await tx.stockMovement.create({ data: { variantId, type: "SAIDA", qty: delta, reason: `Mala editada — ${customerName}`, userId: staff.id } });
+          if (old) {
+            await tx.malaItem.update({ where: { id: old.itemId }, data: { qty: newQty } });
+          } else {
+            const { price } = computePrice(v.product, promos);
+            await tx.malaItem.create({
+              data: {
+                malaId, variantId, brand: v.product.brand, productName: v.product.name, type: v.product.type,
+                size: v.size, color: v.color, sku: v.sku, unitPrice: v.priceOverride ?? price, qty: newQty,
+              },
+            });
+          }
+        } else if (delta < 0) {
+          await tx.productVariant.update({ where: { id: variantId }, data: { stock: { increment: -delta } } });
+          await tx.stockMovement.create({ data: { variantId, type: "ENTRADA", qty: -delta, reason: `Mala editada — ${customerName}`, userId: staff.id } });
+          if (old) await tx.malaItem.update({ where: { id: old.itemId }, data: { qty: newQty } });
+        }
+      }
+      // Handle removed variants (return all to stock, delete row).
+      for (const [variantId, old] of oldMap) {
+        if (newMap.has(variantId)) continue;
+        await tx.productVariant.update({ where: { id: variantId }, data: { stock: { increment: old.qty } } });
+        await tx.stockMovement.create({ data: { variantId, type: "ENTRADA", qty: old.qty, reason: `Mala editada — ${customerName}`, userId: staff.id } });
+        await tx.malaItem.delete({ where: { id: old.itemId } });
+      }
+      await tx.mala.update({
+        where: { id: malaId },
+        data: { customerName, customerPhone: customerPhone || null, notes: notes || null, expiresAt },
+      });
+    });
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Erro ao editar a mala." };
+  }
+  await logAudit({ staff, action: "UPDATE", entity: "Mala HUX", entityId: malaId, summary: `Editou a mala de ${customerName}` });
+  revalidatePath("/backoffice/mala");
+  revalidatePath("/backoffice/estoque");
+  return { ok: true };
+}
+
 /** Acerto da mala: por item COMPROU (vira venda) ou DEVOLVEU (volta ao estoque). */
 export async function settleMalaAction(
   malaId: string,

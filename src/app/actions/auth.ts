@@ -81,7 +81,7 @@ export async function loginAction(_prev: FormState, formData: FormData): Promise
 
   const email = parsed.data.email.toLowerCase().trim();
   const customer = await db.customer.findUnique({ where: { email } });
-  if (!customer || !customer.active || !(await verifyPassword(parsed.data.password, customer.passwordHash))) {
+  if (!customer || !customer.active || !customer.passwordHash || !(await verifyPassword(parsed.data.password, customer.passwordHash))) {
     return { ok: false, error: "E-mail ou senha incorretos." };
   }
 
@@ -136,7 +136,7 @@ export async function changePasswordAction(_prev: FormState, formData: FormData)
   if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? "Verifique os campos." };
 
   const record = await db.customer.findUnique({ where: { id: customer.id } });
-  if (!record || !(await verifyPassword(parsed.data.current, record.passwordHash))) {
+  if (!record || !record.passwordHash || !(await verifyPassword(parsed.data.current, record.passwordHash))) {
     return { ok: false, error: "Senha atual incorreta." };
   }
   await db.customer.update({

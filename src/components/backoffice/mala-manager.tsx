@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Loader2, Briefcase, Search, X, Minus, Check, RotateCcw } from "lucide-react";
-import { createMalaAction, settleMalaAction, cancelMalaAction } from "@/app/actions/backoffice-mala";
+import { Plus, Loader2, Briefcase, Search, X, Minus, Check, RotateCcw, Pencil } from "lucide-react";
+import { createMalaAction, editMalaAction, settleMalaAction, cancelMalaAction } from "@/app/actions/backoffice-mala";
 import { Modal } from "./modal";
 import { EmptyState } from "./bo-ui";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,7 @@ import { formatCents } from "@/lib/money";
 import { formatDate, cn } from "@/lib/utils";
 
 export type VariantOption = { id: string; label: string; brand: string; stock: number; price: number };
-export type MalaItemRow = { id: string; productName: string; brand: string; size: string; color: string; qty: number; unitPrice: number; decision: string };
+export type MalaItemRow = { id: string; variantId: string; productName: string; brand: string; size: string; color: string; qty: number; unitPrice: number; decision: string };
 export type MalaRow = {
   id: string; customerName: string; customerPhone: string | null; notes: string | null;
   status: string; createdAt: string; expiresAt: string; orderNumber: string | null;
@@ -25,13 +25,17 @@ export function MalaManager({ malas, variants }: { malas: MalaRow[]; variants: V
   const [openNew, setOpenNew] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // new mala form
+  // new / edit mala form
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [prazoDays, setPrazoDays] = useState("7");
   const [notes, setNotes] = useState("");
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<{ v: VariantOption; qty: number }[]>([]);
+  // qty already reserved by THIS mala per variant (edit mode) — that stock is
+  // freed if returned, so it counts toward the editable maximum.
+  const [baseQty, setBaseQty] = useState<Record<string, number>>({});
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -43,20 +47,42 @@ export function MalaManager({ malas, variants }: { malas: MalaRow[]; variants: V
     setSearch("");
   }
   function setQty(id: string, qty: number) {
-    setCart((c) => c.map((x) => (x.v.id === id ? { ...x, qty: Math.max(1, Math.min(x.v.stock, qty)) } : x)));
+    setCart((c) => c.map((x) => (x.v.id === id ? { ...x, qty: Math.max(1, Math.min(x.v.stock + (baseQty[id] ?? 0), qty)) } : x)));
   }
-  function reset() { setCustomerName(""); setCustomerPhone(""); setPrazoDays("7"); setNotes(""); setCart([]); setSearch(""); }
+  function reset() { setEditingId(null); setCustomerName(""); setCustomerPhone(""); setPrazoDays("7"); setNotes(""); setCart([]); setSearch(""); setBaseQty({}); }
 
-  async function create() {
+  function openNewMala() { reset(); setOpenNew(true); }
+
+  function openEdit(m: MalaRow) {
+    setEditingId(m.id);
+    setCustomerName(m.customerName);
+    setCustomerPhone(m.customerPhone ?? "");
+    const days = Math.max(1, Math.round((new Date(m.expiresAt).getTime() - new Date(m.createdAt).getTime()) / 86400000));
+    setPrazoDays(String(days));
+    setNotes(m.notes ?? "");
+    setBaseQty(Object.fromEntries(m.items.map((it) => [it.variantId, it.qty])));
+    setCart(m.items.map((it) => {
+      const found = variants.find((v) => v.id === it.variantId);
+      const v: VariantOption = found ?? {
+        id: it.variantId, brand: it.brand, price: it.unitPrice, stock: it.qty,
+        label: `${it.productName} · ${it.size}/${it.color}`,
+      };
+      return { v, qty: it.qty };
+    }));
+    setSearch("");
+    setOpenNew(true);
+  }
+
+  async function submit() {
     if (!customerName.trim()) return toast("Informe o cliente.", "error");
     if (cart.length === 0) return toast("Adicione ao menos um produto.", "error");
     setBusy(true);
-    const res = await createMalaAction({
-      customerName, customerPhone, notes, prazoDays: Number(prazoDays) || 7,
-      items: cart.map((x) => ({ variantId: x.v.id, qty: x.qty })),
-    });
+    const payload = { customerName, customerPhone, notes, prazoDays: Number(prazoDays) || 7, items: cart.map((x) => ({ variantId: x.v.id, qty: x.qty })) };
+    const res = editingId
+      ? await editMalaAction({ malaId: editingId, ...payload })
+      : await createMalaAction(payload);
     setBusy(false);
-    if (res.ok) { toast("Mala montada. Estoque provisionado.", "success"); setOpenNew(false); reset(); router.refresh(); }
+    if (res.ok) { toast(editingId ? "Mala atualizada." : "Mala montada. Estoque provisionado.", "success"); setOpenNew(false); reset(); router.refresh(); }
     else toast(res.error ?? "Erro.", "error");
   }
 
@@ -92,7 +118,7 @@ export function MalaManager({ malas, variants }: { malas: MalaRow[]; variants: V
   return (
     <>
       <div className="mb-6 flex justify-end">
-        <button onClick={() => setOpenNew(true)} className="btn btn-primary"><Plus size={16} /> Nova mala</button>
+        <button onClick={openNewMala} className="btn btn-primary"><Plus size={16} /> Nova mala</button>
       </div>
 
       {malas.length === 0 ? (
@@ -120,6 +146,7 @@ export function MalaManager({ malas, variants }: { malas: MalaRow[]; variants: V
                   </div>
                   {active && (
                     <div className="flex gap-2">
+                      <button onClick={() => openEdit(m)} disabled={rowBusy} className="btn btn-ghost px-3 py-2 text-xs"><Pencil size={13} /> Editar</button>
                       <button onClick={() => openSettle(m)} disabled={rowBusy} className="btn btn-primary px-3 py-2 text-xs"><Check size={13} /> Acertar</button>
                       <button onClick={() => cancel(m.id)} disabled={rowBusy} className="btn btn-ghost px-3 py-2 text-xs text-negative"><X size={13} /> Cancelar</button>
                     </div>
@@ -140,8 +167,8 @@ export function MalaManager({ malas, variants }: { malas: MalaRow[]; variants: V
         </div>
       )}
 
-      {/* New mala */}
-      <Modal open={openNew} onClose={() => setOpenNew(false)} title="Nova mala HUX" wide>
+      {/* New / edit mala */}
+      <Modal open={openNew} onClose={() => { setOpenNew(false); reset(); }} title={editingId ? "Editar mala" : "Nova mala HUX"} wide dismissible={false}>
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <label><span className={label}>Cliente *</span><input className="field" value={customerName} onChange={(e) => setCustomerName(e.target.value)} /></label>
@@ -187,14 +214,14 @@ export function MalaManager({ malas, variants }: { malas: MalaRow[]; variants: V
           <label className="block"><span className={label}>Observações</span><textarea className="field min-h-16" value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
 
           <div className="flex justify-end gap-3 pt-2">
-            <button onClick={() => setOpenNew(false)} className="btn btn-ghost">Cancelar</button>
-            <button onClick={create} disabled={busy} className="btn btn-primary">{busy && <Loader2 size={16} className="animate-spin" />} Montar mala</button>
+            <button onClick={() => { setOpenNew(false); reset(); }} className="btn btn-ghost">Cancelar</button>
+            <button onClick={submit} disabled={busy} className="btn btn-primary">{busy && <Loader2 size={16} className="animate-spin" />} {editingId ? "Salvar alterações" : "Montar mala"}</button>
           </div>
         </div>
       </Modal>
 
       {/* Settle */}
-      <Modal open={!!settle} onClose={() => setSettle(null)} title="Acerto da mala" wide>
+      <Modal open={!!settle} onClose={() => setSettle(null)} title="Acerto da mala" wide dismissible={false}>
         {settle && (
           <div className="space-y-4">
             <p className="text-sm text-muted">Marque o que o cliente <strong className="text-positive">comprou</strong> e o que <strong className="text-ink-soft">devolveu</strong>. Itens comprados viram uma venda; devolvidos voltam ao estoque.</p>

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { guardModule } from "@/lib/bo-guard";
 import { db } from "@/lib/db";
+import { getBrandNames } from "@/lib/brands";
 import { parseJson } from "@/lib/utils";
 import { formatCentsPlain } from "@/lib/money";
 import { PageHeader } from "@/components/backoffice/bo-ui";
@@ -17,9 +18,10 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
   await guardModule("produtos");
   const { id } = await params;
 
-  const [product, collections] = await Promise.all([
+  const [product, collections, brands] = await Promise.all([
     db.product.findUnique({ where: { id }, include: { variants: { orderBy: { createdAt: "asc" } } } }),
     db.collection.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true } }),
+    getBrandNames(),
   ]);
   if (!product) notFound();
 
@@ -58,7 +60,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
         <ChevronLeft size={14} /> Voltar
       </Link>
       <PageHeader eyebrow="Catálogo" title={product.name} subtitle={`${product.brand} · ${product.slug}`} />
-      <ProductForm initial={initial} collections={collections} />
+      <ProductForm initial={initial} collections={collections} brands={brands} />
     </>
   );
 }

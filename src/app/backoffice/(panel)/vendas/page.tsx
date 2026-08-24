@@ -60,7 +60,7 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
   });
   if (AND.length) where.AND = AND;
 
-  const [filteredSales, sellers, monthPaid, commissionOrders, variants] = await Promise.all([
+  const [filteredSales, sellers, monthPaid, commissionOrders, variants, customers] = await Promise.all([
     db.order.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -84,6 +84,7 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
       include: { product: { select: { name: true, brand: true, type: true, basePrice: true } } },
       orderBy: { createdAt: "asc" },
     }),
+    db.customer.findMany({ where: { active: true }, select: { id: true, name: true, phone: true, email: true }, orderBy: { name: "asc" } }),
   ]);
 
   // commission per seller this month
@@ -133,7 +134,7 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
         <StatCard label="Total de vendas (mês)" value={String(monthPaid.length)} hint={formatCents(rev(monthPaid))} icon={Receipt} />
       </div>
 
-      <VendasManager variants={variantOptions} sellers={sellers.map((s) => ({ id: s.id, name: s.displayName }))} />
+      <VendasManager variants={variantOptions} sellers={sellers.map((s) => ({ id: s.id, name: s.displayName }))} customers={customers} />
 
       {/* ---- Filtered sales explorer ---- */}
       <div className="mt-8">

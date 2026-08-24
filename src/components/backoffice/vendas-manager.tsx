@@ -11,20 +11,27 @@ import { cn } from "@/lib/utils";
 import { MANUAL_PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from "@/lib/enums";
 
 export type VariantOption = { id: string; label: string; stock: number; price: number };
+export type CustomerOption = { id: string; name: string; phone: string | null; email: string | null };
 
 export function VendasManager({
-  variants, sellers,
+  variants, sellers, customers,
 }: {
   variants: VariantOption[];
   sellers: { id: string; name: string }[];
+  customers: CustomerOption[];
 }) {
   const router = useRouter();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const [customerName, setCustomerName] = useState("Cliente balcão");
-  const [customerPhone, setCustomerPhone] = useState("");
+  // Cliente: escolher da base ou cadastrar um novo.
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerOption | null>(null);
+  const [custSearch, setCustSearch] = useState("");
+  const [newMode, setNewMode] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newEmail, setNewEmail] = useState("");
   const [sellerId, setSellerId] = useState(sellers[0]?.id ?? "");
   const [method, setMethod] = useState<string>("DINHEIRO");
   const [installments, setInstallments] = useState("1");
@@ -45,6 +52,12 @@ export function VendasManager({
     const q = search.toLowerCase();
     return (q ? variants.filter((v) => v.label.toLowerCase().includes(q)) : variants).slice(0, 25);
   }, [search, variants]);
+
+  const custMatches = useMemo(() => {
+    const q = custSearch.trim().toLowerCase();
+    if (!q) return [];
+    return customers.filter((c) => `${c.name} ${c.phone ?? ""} ${c.email ?? ""}`.toLowerCase().includes(q)).slice(0, 8);
+  }, [custSearch, customers]);
 
   const subtotal = cart.reduce((s, x) => s + x.v.price * x.qty, 0);
 
@@ -72,7 +85,8 @@ export function VendasManager({
 
   function add(v: VariantOption) { setCart((c) => (c.some((x) => x.v.id === v.id) ? c : [...c, { v, qty: 1 }])); setSearch(""); }
   function setQty(id: string, qty: number) { setCart((c) => c.map((x) => (x.v.id === id ? { ...x, qty: Math.max(1, Math.min(x.v.stock, qty)) } : x))); }
-  function reset() { setCustomerName("Cliente balcão"); setCustomerPhone(""); setMethod("DINHEIRO"); setInstallments("1"); setDiscount(""); setNote(""); setCart([]); setSearch(""); setDownPayment(""); setAprazoParcelas("2"); setFirstDueDate(""); setCouponInput(""); setCoupon(null); }
+  function resetCustomer() { setSelectedCustomer(null); setCustSearch(""); setNewMode(false); setNewName(""); setNewPhone(""); setNewEmail(""); }
+  function reset() { resetCustomer(); setMethod("DINHEIRO"); setInstallments("1"); setDiscount(""); setNote(""); setCart([]); setSearch(""); setDownPayment(""); setAprazoParcelas("2"); setFirstDueDate(""); setCouponInput(""); setCoupon(null); }
 
   async function applyCoupon() {
     const code = couponInput.trim();
@@ -89,11 +103,16 @@ export function VendasManager({
 
   async function save() {
     if (cart.length === 0) return toast("Adicione ao menos um item.", "error");
+    if (!selectedCustomer && (!newMode || newName.trim().length < 2)) return toast("Selecione um cliente da base ou cadastre um novo.", "error");
     if (couponBelowMin) return toast("Subtotal abaixo do mínimo do cupom. Remova o cupom ou ajuste os itens.", "error");
     if (method === "A_PRAZO" && financedCents <= 0) return toast("Na venda a prazo, a entrada deve ser menor que o total.", "error");
     setBusy(true);
     const res = await createManualSaleAction({
-      customerName, customerPhone, sellerId, paymentMethod: method as never,
+      customerId: selectedCustomer?.id,
+      customerName: selectedCustomer ? undefined : newName,
+      customerPhone: selectedCustomer ? undefined : newPhone,
+      customerEmail: selectedCustomer ? undefined : newEmail,
+      sellerId, paymentMethod: method as never,
       cardInstallments: method === "CARTAO" ? Number(installments) || 1 : undefined,
       downPayment: method === "A_PRAZO" ? downPayment : undefined,
       aprazoParcelas: method === "A_PRAZO" ? nParcelas : undefined,
@@ -114,11 +133,50 @@ export function VendasManager({
         <button onClick={() => setOpen(true)} className="btn btn-primary"><Plus size={16} /> Nova venda física</button>
       </div>
 
-      <Modal open={open} onClose={() => setOpen(false)} title="Nova venda física" wide>
+      <Modal open={open} onClose={() => setOpen(false)} title="Nova venda física" wide dismissible={false}>
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <label><span className={label}>Cliente</span><input className="field" value={customerName} onChange={(e) => setCustomerName(e.target.value)} /></label>
-            <label><span className={label}>Telefone</span><input className="field" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="(11) 99999-9999" /></label>
+            <div className="sm:col-span-2">
+              <span className={label}>Cliente *</span>
+              {selectedCustomer ? (
+                <div className="flex items-center justify-between gap-2 rounded-[var(--radius)] border border-positive/40 bg-positive/5 px-3 py-2.5 text-sm">
+                  <span className="min-w-0 truncate"><strong>{selectedCustomer.name}</strong>{selectedCustomer.phone ? ` · ${selectedCustomer.phone}` : ""}</span>
+                  <button onClick={resetCustomer} className="shrink-0 text-xs text-muted hover:text-negative">trocar</button>
+                </div>
+              ) : newMode ? (
+                <div className="space-y-2 rounded-[var(--radius)] border border-line p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-ink-soft">Novo cliente (vai para a base de Clientes)</span>
+                    <button onClick={() => setNewMode(false)} className="text-xs text-muted hover:text-orange">← escolher da base</button>
+                  </div>
+                  <input className="field py-2" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nome *" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input className="field py-2" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="Telefone" inputMode="tel" />
+                    <input className="field py-2" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="E-mail (opcional)" inputMode="email" />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="relative">
+                    <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+                    <input className="field pl-9" value={custSearch} onChange={(e) => setCustSearch(e.target.value)} placeholder="Buscar cliente por nome, telefone ou e-mail…" />
+                  </div>
+                  {custSearch.trim() && (
+                    <div className="mt-1 max-h-44 overflow-y-auto rounded-[var(--radius)] border border-line">
+                      {custMatches.map((c) => (
+                        <button key={c.id} onClick={() => { setSelectedCustomer(c); setCustSearch(""); }} className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-elevated">
+                          <span className="truncate">{c.name}</span>
+                          <span className="ml-2 shrink-0 font-mono text-xs text-muted">{c.phone ?? c.email ?? ""}</span>
+                        </button>
+                      ))}
+                      <button onClick={() => { setNewMode(true); setNewName(custSearch.trim()); setCustSearch(""); }} className="flex w-full items-center gap-2 border-t border-line px-3 py-2 text-left text-sm text-orange hover:bg-elevated">
+                        <Plus size={14} /> Cadastrar novo cliente{custSearch.trim() ? `: “${custSearch.trim()}”` : ""}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             <label><span className={label}>Vendedor</span>
               <select className="field" value={sellerId} onChange={(e) => setSellerId(e.target.value)}>
                 {sellers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}

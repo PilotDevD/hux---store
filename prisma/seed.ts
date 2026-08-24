@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { COLLECTIONS, PRODUCTS, type SeedProduct } from "./catalog";
 import { posterVariants } from "./svg";
-import type { ProductType } from "../src/lib/enums";
+import { BRANDS, BRAND_INFO, type ProductType } from "../src/lib/enums";
 
 const db = new PrismaClient();
 
@@ -45,6 +45,7 @@ async function main() {
   await db.promotion.deleteMany();
   await db.coupon.deleteMany();
   await db.collection.deleteMany();
+  await db.brand.deleteMany();
   await db.address.deleteMany();
   await db.customer.deleteMany();
   await db.user.deleteMany();
@@ -86,6 +87,16 @@ async function main() {
       commissionPct: 5,
     },
   });
+
+  // ------------------------------ brands ---------------------------------
+  console.log("→ Marcas...");
+  for (let i = 0; i < BRANDS.length; i++) {
+    const name = BRANDS[i];
+    const info = BRAND_INFO[name];
+    await db.brand.create({
+      data: { slug: slugify(name), name, tagline: info.tagline, blurb: info.blurb, accent: info.accent, sortOrder: i + 1 },
+    });
+  }
 
   // ------------------------------ collections ----------------------------
   console.log("→ Coleções...");

@@ -43,10 +43,11 @@ model User {
 model Customer {
   id           String   @id @default(cuid())
   name         String
-  email        String   @unique
-  passwordHash String
+  email        String?  @unique // opcional: clientes de balcão (venda física) podem não ter e-mail
+  passwordHash String?  // opcional: só clientes do portal têm senha
   phone        String?
   cpf          String?
+  origin       String   @default("PORTAL") // PORTAL | BALCAO
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -79,6 +80,20 @@ model Address {
 }
 
 // ----------------------------- Catalog --------------------------------------
+
+// Marcas vendidas na loja. `name` é o identificador usado em Product.brand
+// (string). Gerenciável pelo backoffice (criar/editar/apagar).
+model Brand {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String   @unique
+  tagline   String?
+  blurb     String?
+  accent    String?  // hex (#RRGGBB) — cor de destaque no site
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+}
 
 model Collection {
   id          String   @id @default(cuid())

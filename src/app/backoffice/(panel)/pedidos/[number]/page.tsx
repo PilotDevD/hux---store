@@ -11,6 +11,7 @@ import { OrderStatusBadge, Badge } from "@/components/ui/badge";
 import { OrderTimeline } from "@/components/orders/order-timeline";
 import { OrderSummary } from "@/components/orders/order-summary";
 import { OrderActions } from "@/components/backoffice/order-actions";
+import { OrderCouponEditor } from "@/components/backoffice/order-coupon-editor";
 
 export const metadata: Metadata = { title: "Pedido" };
 
@@ -77,6 +78,8 @@ export default async function BoOrderDetail({ params }: { params: Promise<{ numb
               <span className="font-display text-lg text-orange">{formatCents(order.total)}</span>
             </div>
             {order.paidAt && <p className="mt-2 text-xs text-faint">Pago em {formatDateTime(order.paidAt)}</p>}
+
+            <OrderCouponEditor number={order.number} currentCode={order.couponCode} />
 
             {order.installments.length > 0 && (
               <div className="mt-4 space-y-2 border-t border-line pt-3">

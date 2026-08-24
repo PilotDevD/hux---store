@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireModule } from "@/lib/auth";
 import { transitionOrder } from "@/lib/orders";
+import { validateCoupon } from "@/lib/coupon";
 import { logAudit } from "@/lib/audit";
+import { formatCents } from "@/lib/money";
 import { isOrderStatus, ORDER_STATUS_LABELS, type OrderStatus } from "@/lib/enums";
 
 async function findOrder(number: string) {
@@ -59,6 +61,73 @@ export async function shipOrderAction(number: string, trackingCode: string) {
     trackingCode: trackingCode || undefined,
     note: trackingCode ? `Enviado. Rastreio: ${trackingCode}` : "Pedido enviado.",
   });
+}
+
+/**
+ * Change (or remove) the discount coupon applied to an order and recompute the
+ * discount/total from the coupon over the order subtotal. Works for online and
+ * physical sales. Pass an empty code to remove the coupon.
+ */
+export async function changeOrderCouponAction(
+  number: string,
+  rawCode: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const staff = await requireModule("pedidos");
+  const order = await db.order.findUnique({ where: { number } });
+  if (!order) return { ok: false, error: "Pedido não encontrado." };
+  if (order.status === "CANCELADO") return { ok: false, error: "Pedido cancelado." };
+
+  const code = rawCode.trim().toUpperCase();
+  let newCouponId: string | null = null;
+  let newCouponCode: string | null = null;
+  let newDiscount = 0;
+
+  if (code) {
+    const res = await validateCoupon(code, order.subtotal, order.customerId ?? null);
+    if (!res.ok) return { ok: false, error: res.error ?? "Cupom inválido." };
+    if (res.type === "FREE_SHIPPING") return { ok: false, error: "Troca para cupom de frete grátis não é suportada aqui." };
+    newCouponId = res.couponId ?? null;
+    newCouponCode = res.code ?? null;
+    newDiscount = res.discountCents ?? 0;
+  }
+
+  if (order.couponId === newCouponId && order.couponCode === newCouponCode) {
+    return { ok: false, error: "Este cupom já está aplicado." };
+  }
+
+  const discountTotal = Math.min(order.subtotal, newDiscount);
+  const total = Math.max(0, order.subtotal - discountTotal) + order.shippingTotal;
+
+  try {
+    await db.$transaction(async (tx) => {
+      if (order.couponId && order.couponId !== newCouponId) {
+        await tx.coupon.update({ where: { id: order.couponId }, data: { usedCount: { decrement: 1 } } }).catch(() => {});
+      }
+      if (newCouponId && newCouponId !== order.couponId) {
+        await tx.coupon.update({ where: { id: newCouponId }, data: { usedCount: { increment: 1 } } });
+      }
+      await tx.order.update({
+        where: { id: order.id },
+        data: { couponId: newCouponId, couponCode: newCouponCode, discountTotal, total },
+      });
+      await tx.orderEvent.create({
+        data: {
+          orderId: order.id, status: order.status,
+          note: newCouponCode
+            ? `Cupom alterado para ${newCouponCode} (desconto ${formatCents(discountTotal)}, total ${formatCents(total)}).`
+            : `Cupom removido (total ${formatCents(total)}).`,
+        },
+      });
+    });
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Erro ao alterar o cupom." };
+  }
+
+  await logAudit({ staff, action: "UPDATE", entity: "Pedido", entityId: number, summary: `Alterou o cupom do pedido ${number} → ${newCouponCode ?? "sem cupom"} (total ${formatCents(total)})` });
+  revalidatePath(`/backoffice/pedidos/${number}`);
+  revalidatePath("/backoffice/pedidos");
+  revalidatePath("/backoffice");
+  return { ok: true };
 }
 
 export async function markRemarketedAction(number: string): Promise<{ ok: boolean }> {

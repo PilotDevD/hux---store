@@ -8,6 +8,7 @@ import { logAudit } from "@/lib/audit";
 import { computePrice, getActivePromotions } from "@/lib/pricing";
 import { validateCoupon } from "@/lib/coupon";
 import { parseReaisToCents, formatCents } from "@/lib/money";
+import { onlyDigits } from "@/lib/utils";
 import { MANUAL_PAYMENT_METHODS } from "@/lib/enums";
 
 /** Validate a coupon for a physical sale (no customer, no shipping). */
@@ -47,8 +48,10 @@ function buildAprazoPlan(financedCents: number, parcelas: number, firstDue: Date
 }
 
 const schema = z.object({
-  customerName: z.string().min(2, "Informe o cliente."),
+  customerId: z.string().optional(),        // cliente existente (base de clientes)
+  customerName: z.string().optional(),      // novo cliente (balcão)
   customerPhone: z.string().optional(),
+  customerEmail: z.string().optional(),
   sellerId: z.string().optional(),
   paymentMethod: z.enum(MANUAL_PAYMENT_METHODS),
   cardInstallments: z.coerce.number().int().min(1).max(12).optional(),
@@ -67,6 +70,26 @@ export async function createManualSaleAction(input: z.input<typeof schema>): Pro
   const parsed = schema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? "Dados inválidos." };
   const d = parsed.data;
+
+  // Resolve / create the customer so physical-sale buyers land in the Clientes base.
+  let resolvedCustomerId: string | null = null;
+  let snapName = "";
+  let snapPhone: string | null = null;
+  let snapEmail = "";
+  let createCustomer: { name: string; email: string | null; phone: string | null } | null = null;
+  if (d.customerId) {
+    const c = await db.customer.findUnique({ where: { id: d.customerId } });
+    if (!c) return { ok: false, error: "Cliente selecionado não encontrado." };
+    resolvedCustomerId = c.id; snapName = c.name; snapPhone = c.phone ?? null; snapEmail = c.email ?? "";
+  } else {
+    const name = (d.customerName ?? "").trim();
+    if (name.length < 2) return { ok: false, error: "Informe o cliente (selecione um existente ou cadastre um novo)." };
+    const email = d.customerEmail?.trim().toLowerCase() || null;
+    const phone = d.customerPhone?.trim() ? onlyDigits(d.customerPhone) : null;
+    const existing = email ? await db.customer.findUnique({ where: { email } }) : null;
+    if (existing) { resolvedCustomerId = existing.id; snapName = existing.name; snapPhone = existing.phone ?? null; snapEmail = existing.email ?? ""; }
+    else { createCustomer = { name, email, phone }; snapName = name; snapPhone = phone; snapEmail = email ?? ""; }
+  }
 
   const promos = await getActivePromotions();
   const lines: { variantId: string; brand: string; productName: string; type: string; size: string; color: string; sku: string; unitPrice: number; unitCost: number; qty: number }[] = [];
@@ -121,6 +144,12 @@ export async function createManualSaleAction(input: z.input<typeof schema>): Pro
 
   try {
     await db.$transaction(async (tx) => {
+      if (createCustomer) {
+        const nc = await tx.customer.create({
+          data: { name: createCustomer.name, email: createCustomer.email, phone: createCustomer.phone, origin: "BALCAO" },
+        });
+        resolvedCustomerId = nc.id;
+      }
       for (const l of lines) {
         const fresh = await tx.productVariant.findUnique({ where: { id: l.variantId } });
         if (!fresh || fresh.stock < l.qty) throw new Error(`Estoque insuficiente para ${l.productName}.`);
@@ -129,7 +158,7 @@ export async function createManualSaleAction(input: z.input<typeof schema>): Pro
       }
       await tx.order.create({
         data: {
-          number, customerId: null, channel: "MANUAL",
+          number, customerId: resolvedCustomerId, channel: "MANUAL",
           status: isAprazo ? "ENTREGUE" : "PAGO",
           paymentMethod: d.paymentMethod,
           paymentStatus: isAprazo ? "PENDENTE" : "CONFIRMADO",
@@ -138,7 +167,7 @@ export async function createManualSaleAction(input: z.input<typeof schema>): Pro
           couponId, couponCode,
           subtotal, discountTotal, shippingTotal: 0, total, costTotal,
           shippingLabel: "Venda física / balcão", addressSnapshot: "{}",
-          customerSnapshot: JSON.stringify({ name: d.customerName, email: "", phone: d.customerPhone ?? null }),
+          customerSnapshot: JSON.stringify({ name: snapName, email: snapEmail, phone: snapPhone }),
           paidAt: isAprazo ? null : new Date(),
           handledById: staff.id, soldByUserId: seller.id, soldByName: seller.displayName,
           notes: d.note || null,
@@ -166,9 +195,10 @@ export async function createManualSaleAction(input: z.input<typeof schema>): Pro
   await logAudit({
     staff, action: "SALE", entity: "Venda", entityId: number,
     summary: isAprazo
-      ? `Venda a prazo ${number} — ${d.customerName} (${formatCents(total)}, entrada ${formatCents(entrada)}, ${aprazoPlan.length}x), vendedor ${seller.displayName}`
-      : `Venda física ${number} — ${d.customerName} (${formatCents(total)}), vendedor ${seller.displayName}`,
+      ? `Venda a prazo ${number} — ${snapName} (${formatCents(total)}, entrada ${formatCents(entrada)}, ${aprazoPlan.length}x), vendedor ${seller.displayName}`
+      : `Venda física ${number} — ${snapName} (${formatCents(total)}), vendedor ${seller.displayName}`,
   });
+  revalidatePath("/backoffice/clientes");
   revalidatePath("/backoffice/vendas");
   revalidatePath("/backoffice/a-prazo");
   revalidatePath("/backoffice/pedidos");

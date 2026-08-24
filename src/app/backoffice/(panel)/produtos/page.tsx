@@ -6,7 +6,11 @@ import { guardModule } from "@/lib/bo-guard";
 import { db } from "@/lib/db";
 import { parseJson } from "@/lib/utils";
 import { formatCents } from "@/lib/money";
-import { BRANDS, PRODUCT_TYPES, PRODUCT_TYPE_LABELS, type ProductType } from "@/lib/enums";
+import {
+  PRODUCT_TYPES, PRODUCT_TYPE_LABELS, SIZES, SIZE_LABELS, GENDERS, GENDER_LABELS,
+  type ProductType,
+} from "@/lib/enums";
+import { getBrandNames } from "@/lib/brands";
 import { PageHeader, EmptyState } from "@/components/backoffice/bo-ui";
 import { BoFilterBar } from "@/components/backoffice/bo-filter-bar";
 import { Badge } from "@/components/ui/badge";
@@ -23,11 +27,15 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
   const q = first(sp.q)?.trim();
   const brand = first(sp.brand);
   const type = first(sp.tipo);
+  const gender = first(sp.genero);
+  const size = first(sp.tamanho);
   const status = first(sp.status);
 
   const where: Prisma.ProductWhereInput = {};
   if (brand) where.brand = brand;
   if (type) where.type = type;
+  if (gender) where.gender = gender;
+  if (size) where.variants = { some: { size, active: true } };
   if (status === "ativo") where.active = true;
   if (status === "inativo") where.active = false;
   if (q) where.OR = [
@@ -36,11 +44,14 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
     { variants: { some: { sku: { contains: q, mode: "insensitive" } } } },
   ];
 
-  const products = await db.product.findMany({
-    where,
-    orderBy: [{ active: "desc" }, { createdAt: "desc" }],
-    include: { variants: true, collection: { select: { name: true } } },
-  });
+  const [products, brandNames] = await Promise.all([
+    db.product.findMany({
+      where,
+      orderBy: [{ active: "desc" }, { createdAt: "desc" }],
+      include: { variants: true, collection: { select: { name: true } } },
+    }),
+    getBrandNames(),
+  ]);
 
   return (
     <>
@@ -58,8 +69,10 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
       <BoFilterBar
         searchPlaceholder="Buscar por nome, modelo ou SKU…"
         selects={[
-          { param: "brand", label: "Marca", options: BRANDS.map((b) => ({ value: b, label: b })) },
+          { param: "brand", label: "Marca", options: brandNames.map((b) => ({ value: b, label: b })) },
           { param: "tipo", label: "Tipo", options: PRODUCT_TYPES.map((t) => ({ value: t, label: PRODUCT_TYPE_LABELS[t] })) },
+          { param: "genero", label: "Gênero", options: GENDERS.map((g) => ({ value: g, label: GENDER_LABELS[g] })) },
+          { param: "tamanho", label: "Tamanho", options: SIZES.map((s) => ({ value: s, label: SIZE_LABELS[s] })) },
           { param: "status", label: "Situação", options: [{ value: "ativo", label: "Ativos" }, { value: "inativo", label: "Inativos" }] },
         ]}
       />

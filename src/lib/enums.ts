@@ -216,6 +216,7 @@ export const MODULES = [
   { id: "encomendas", label: "Encomendas" },
   { id: "confeccao", label: "Confecção" },
   { id: "produtos", label: "Produtos" },
+  { id: "marcas", label: "Marcas & Coleções" },
   { id: "estoque", label: "Estoque" },
   { id: "notafiscal", label: "Nota Fiscal IA" },
   { id: "promocoes", label: "Promoções" },

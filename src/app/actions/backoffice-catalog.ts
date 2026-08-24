@@ -11,7 +11,7 @@ import { slugify } from "@/lib/utils";
 import { parseReaisToCents } from "@/lib/money";
 import { posterVariants } from "@/lib/poster";
 import {
-  BRANDS, GENDERS, PRODUCT_TYPES, SIZES, PROMOTION_TYPES, PROMOTION_SCOPES,
+  GENDERS, PRODUCT_TYPES, SIZES, PROMOTION_TYPES, PROMOTION_SCOPES,
   COUPON_TYPES, MOVEMENT_TYPES, type ProductType,
 } from "@/lib/enums";
 
@@ -79,7 +79,7 @@ const variantSchema = z.object({
 
 const productSchema = z.object({
   id: z.string().optional(),
-  brand: z.enum(BRANDS),
+  brand: z.string().min(1),
   name: z.string().min(2),
   modelName: z.string().optional(),
   type: z.enum(PRODUCT_TYPES),
@@ -139,19 +139,35 @@ export async function upsertProductAction(
       let i = 0;
       for (const v of p.variants) {
         i++;
-        const data = {
-          size: v.size, color: v.color, colorHex: v.colorHex || null,
-          stock: v.stock,
-          priceOverride: v.priceOverride ? parseReaisToCents(v.priceOverride) : null,
-          cost: v.cost ? parseReaisToCents(v.cost) : 0,
-          active: true,
-        };
         if (v.id) {
-          await db.productVariant.update({ where: { id: v.id }, data });
-        } else {
-          await db.productVariant.create({
-            data: { ...data, productId: p.id, sku: skuFor(p.brand, p.type, v.size, v.color, Date.now() + i) },
+          // NOTE: stock is intentionally NOT updated here. Editing a product must
+          // never overwrite the real stock (which is managed via Estoque / stock
+          // movements) — otherwise a stale form value silently reverts it.
+          await db.productVariant.update({
+            where: { id: v.id },
+            data: {
+              size: v.size, color: v.color, colorHex: v.colorHex || null,
+              priceOverride: v.priceOverride ? parseReaisToCents(v.priceOverride) : null,
+              cost: v.cost ? parseReaisToCents(v.cost) : 0,
+              active: true,
+            },
           });
+        } else {
+          const created = await db.productVariant.create({
+            data: {
+              size: v.size, color: v.color, colorHex: v.colorHex || null,
+              stock: v.stock,
+              priceOverride: v.priceOverride ? parseReaisToCents(v.priceOverride) : null,
+              cost: v.cost ? parseReaisToCents(v.cost) : 0,
+              active: true,
+              productId: p.id, sku: skuFor(p.brand, p.type, v.size, v.color, Date.now() + i),
+            },
+          });
+          if (created.stock > 0) {
+            await db.stockMovement.create({
+              data: { variantId: created.id, type: "ENTRADA", qty: created.stock, reason: "Variante adicionada", userId: staff.id },
+            });
+          }
         }
       }
       await logAudit({ staff, action: "UPDATE", entity: "Produto", entityId: p.id, summary: `Editou o produto "${p.name}" (${p.brand})` });
