@@ -130,6 +130,26 @@ export async function changeOrderCouponAction(
   return { ok: true };
 }
 
+/** Admin-only: reassign the seller credited for a sale. */
+export async function changeOrderSellerAction(
+  number: string,
+  sellerId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const staff = await requireModule("pedidos");
+  if (staff.role !== "ADMIN") return { ok: false, error: "Apenas o administrador pode alterar o vendedor." };
+  const order = await db.order.findUnique({ where: { number } });
+  if (!order) return { ok: false, error: "Pedido não encontrado." };
+  const seller = await db.user.findUnique({ where: { id: sellerId } });
+  if (!seller) return { ok: false, error: "Vendedor não encontrado." };
+
+  await db.order.update({ where: { id: order.id }, data: { soldByUserId: seller.id, soldByName: seller.displayName } });
+  await logAudit({ staff, action: "UPDATE", entity: "Pedido", entityId: number, summary: `Alterou o vendedor do pedido ${number} → ${seller.displayName}` });
+  revalidatePath(`/backoffice/pedidos/${number}`);
+  revalidatePath("/backoffice/vendas");
+  revalidatePath("/backoffice");
+  return { ok: true };
+}
+
 export async function markRemarketedAction(number: string): Promise<{ ok: boolean }> {
   const staff = await requireModule("pedidos");
   const order = await db.order.findUnique({ where: { number } });

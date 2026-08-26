@@ -17,7 +17,7 @@ export default async function EstoquePage({ searchParams }: { searchParams: Prom
 
   const variants = await db.productVariant.findMany({
     where: { active: true, product: { active: true }, ...(onlyLow ? { stock: { lte: 3 } } : {}) },
-    include: { product: { select: { name: true, brand: true } } },
+    include: { product: { select: { name: true, brand: true, type: true } } },
     orderBy: [{ stock: "asc" }],
   });
 
@@ -25,6 +25,7 @@ export default async function EstoquePage({ searchParams }: { searchParams: Prom
     variantId: v.id,
     productName: v.product.name,
     brand: v.product.brand,
+    type: v.product.type,
     sku: v.sku,
     size: v.size,
     color: v.color,

@@ -8,6 +8,7 @@ import {
 } from "@/app/actions/backoffice-encomendas";
 import { Modal } from "./modal";
 import { EmptyState } from "./bo-ui";
+import { CustomerAutocomplete, type CustomerLite } from "./customer-autocomplete";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { formatCents } from "@/lib/money";
@@ -41,7 +42,7 @@ const statusLabel: Record<string, string> = {
   PENDENTE: "Pendente", CONCLUIDA: "Concluída", CANCELADA: "Cancelada",
 };
 
-export function EncomendasManager({ backorders }: { backorders: BackorderRow[] }) {
+export function EncomendasManager({ backorders, customers }: { backorders: BackorderRow[]; customers: CustomerLite[] }) {
   const router = useRouter();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -141,7 +142,7 @@ export function EncomendasManager({ backorders }: { backorders: BackorderRow[] }
         </div>
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title={f.id ? "Editar encomenda" : "Nova encomenda"} wide>
+      <Modal open={open} onClose={() => setOpen(false)} title={f.id ? "Editar encomenda" : "Nova encomenda"} wide dismissible={false}>
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <label><span className={label}>Marca</span>
@@ -171,9 +172,14 @@ export function EncomendasManager({ backorders }: { backorders: BackorderRow[] }
             </label>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <label><span className={label}>Cliente *</span>
-              <input className="field" value={f.customerName} onChange={(e) => set("customerName", e.target.value)} />
-            </label>
+            <div><span className={label}>Cliente *</span>
+              <CustomerAutocomplete
+                customers={customers}
+                name={f.customerName}
+                onName={(v) => set("customerName", v)}
+                onPick={(c) => setF((p) => ({ ...p, customerName: c.name, customerPhone: c.phone ?? p.customerPhone }))}
+              />
+            </div>
             <label><span className={label}>Telefone (WhatsApp)</span>
               <input className="field" value={f.customerPhone} onChange={(e) => set("customerPhone", e.target.value)} placeholder="(11) 99999-9999" />
             </label>

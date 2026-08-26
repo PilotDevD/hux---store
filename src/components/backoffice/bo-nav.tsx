@@ -7,7 +7,7 @@ import {
   Users, Bell, Truck, Settings, LogOut, ExternalLink,
   Barcode, Bookmark, ClipboardList,
   Receipt, Briefcase, Scissors, Wallet, ScanLine, Megaphone, BellRing, History,
-  CalendarClock, RefreshCw, Tags,
+  CalendarClock, RefreshCw, Tags, BarChart3,
 } from "lucide-react";
 import { staffLogoutAction } from "@/app/actions/staff-auth";
 import { Logo } from "@/components/site/logo";
@@ -35,6 +35,7 @@ const NAV: { id: string; label: string; href: string; icon: typeof LayoutDashboa
   { id: "clientes", label: "Clientes", href: "/backoffice/clientes", icon: Users },
   { id: "avisos", label: "Avise-me", href: "/backoffice/avisos", icon: BellRing },
   { id: "despesas", label: "Despesas", href: "/backoffice/despesas", icon: Wallet },
+  { id: "relatorios", label: "Relatórios", href: "/backoffice/relatorios", icon: BarChart3 },
   { id: "notificacoes", label: "Notificações", href: "/backoffice/notificacoes", icon: Bell },
   { id: "frete", label: "Frete", href: "/backoffice/frete", icon: Truck },
   { id: "auditoria", label: "Auditoria", href: "/backoffice/auditoria", icon: History },

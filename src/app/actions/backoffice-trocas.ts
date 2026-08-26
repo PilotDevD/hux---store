@@ -103,6 +103,7 @@ export async function lookupOrderForReturnAction(numberRaw: string): Promise<Ret
 const schema = z.object({
   orderNumber: z.string().min(1),
   reason: z.string().min(3, "Descreva o motivo da troca/devolução."),
+  refundMethod: z.enum(["DINHEIRO", "VALE"]).optional(),
   items: z
     .array(
       z.object({
@@ -117,7 +118,7 @@ const schema = z.object({
 
 export async function processReturnAction(
   input: z.input<typeof schema>,
-): Promise<{ ok: boolean; error?: string; number?: string }> {
+): Promise<{ ok: boolean; error?: string; number?: string; vale?: { code: string; amount: number } }> {
   const staff = await requireModule("trocas");
   const parsed = schema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? "Dados inválidos." };
@@ -196,6 +197,11 @@ export async function processReturnAction(
   }
 
   const type = hasTroca ? "TROCA" : "DEVOLUCAO";
+  const refundMethod = d.refundMethod === "VALE" ? "VALE" : "DINHEIRO";
+  // Store credit (vale): money owed to the customer = cash refund + any exchange
+  // difference in the customer's favour.
+  const valeAmount = refundMethod === "VALE" ? refundAmount + Math.max(0, -exchangeDiff) : 0;
+  const valeCode = valeAmount > 0 ? `VALE${new Date().getFullYear().toString().slice(-2)}-${Math.floor(100000 + Math.random() * 900000)}` : null;
 
   try {
     await db.$transaction(async (tx) => {
@@ -207,10 +213,19 @@ export async function processReturnAction(
         }
       }
 
+      if (valeCode && valeAmount > 0) {
+        await tx.coupon.create({
+          data: {
+            code: valeCode,
+            description: `Vale de ${type === "TROCA" ? "troca" : "devolução"} ${number} — ${customerName}`,
+            type: "FIXED", value: valeAmount, minOrder: 0, maxUses: 1, active: true,
+          },
+        });
+      }
       const created = await tx.returnRequest.create({
         data: {
           number, orderId: order.id, orderNumber: order.number, type, reason: d.reason.trim(),
-          customerName, refundAmount, exchangeDiff,
+          customerName, refundAmount, exchangeDiff, refundMethod, creditCouponCode: valeCode,
           handledById: staff.id, handledByName: staff.displayName,
           items: {
             create: built.map((b) => ({
@@ -250,7 +265,8 @@ export async function processReturnAction(
 
       // Trace on the order timeline.
       const parts: string[] = [];
-      if (refundAmount > 0) parts.push(`reembolso ${formatCents(refundAmount)}`);
+      if (refundMethod === "VALE" && valeAmount > 0) parts.push(`vale ${valeCode} de ${formatCents(valeAmount)}`);
+      else if (refundAmount > 0) parts.push(`reembolso ${formatCents(refundAmount)}`);
       if (hasTroca) parts.push(exchangeDiff >= 0 ? `diferença a cobrar ${formatCents(exchangeDiff)}` : `diferença a devolver ${formatCents(-exchangeDiff)}`);
       await tx.orderEvent.create({
         data: {
@@ -267,11 +283,12 @@ export async function processReturnAction(
 
   await logAudit({
     staff, action: "RETURN", entity: type === "TROCA" ? "Troca" : "Devolução", entityId: number,
-    summary: `${type === "TROCA" ? "Troca" : "Devolução"} ${number} do pedido ${order.number} — ${customerName}${refundAmount > 0 ? ` (reembolso ${formatCents(refundAmount)})` : ""}${hasTroca ? ` (dif. ${formatCents(exchangeDiff)})` : ""}`,
+    summary: `${type === "TROCA" ? "Troca" : "Devolução"} ${number} do pedido ${order.number} — ${customerName}${valeCode ? ` (vale ${valeCode} de ${formatCents(valeAmount)})` : refundAmount > 0 ? ` (reembolso ${formatCents(refundAmount)})` : ""}${hasTroca ? ` (dif. ${formatCents(exchangeDiff)})` : ""}`,
   });
   revalidatePath("/backoffice/trocas");
   revalidatePath("/backoffice/estoque");
+  revalidatePath("/backoffice/cupons");
   revalidatePath(`/backoffice/pedidos/${order.number}`);
   revalidatePath("/backoffice");
-  return { ok: true, number };
+  return { ok: true, number, vale: valeCode && valeAmount > 0 ? { code: valeCode, amount: valeAmount } : undefined };
 }

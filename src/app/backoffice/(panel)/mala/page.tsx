@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { guardModule } from "@/lib/bo-guard";
+import { getCustomerOptions } from "@/lib/customers";
 import { PRODUCT_TYPE_LABELS, SIZE_LABELS, type ProductType, type Size } from "@/lib/enums";
 import { PageHeader } from "@/components/backoffice/bo-ui";
 import { MalaManager, type MalaRow, type VariantOption } from "@/components/backoffice/mala-manager";
@@ -10,13 +11,14 @@ export const metadata: Metadata = { title: "Mala HUX" };
 export default async function MalaPage() {
   await guardModule("mala");
 
-  const [malas, variants] = await Promise.all([
+  const [malas, variants, customers] = await Promise.all([
     db.mala.findMany({ orderBy: [{ status: "asc" }, { createdAt: "desc" }], include: { items: true } }),
     db.productVariant.findMany({
       where: { active: true, product: { active: true } },
       include: { product: { select: { name: true, brand: true, type: true, basePrice: true } } },
       orderBy: { createdAt: "asc" },
     }),
+    getCustomerOptions(),
   ]);
 
   const variantOptions: VariantOption[] = variants.map((v) => ({
@@ -34,7 +36,7 @@ export default async function MalaPage() {
   return (
     <>
       <PageHeader eyebrow="Condicional" title="Mala HUX" subtitle="Peças enviadas para o cliente experimentar em casa. Provisiona estoque e controla o acerto." />
-      <MalaManager malas={rows} variants={variantOptions} />
+      <MalaManager malas={rows} variants={variantOptions} customers={customers} />
     </>
   );
 }

@@ -7,6 +7,7 @@ import { formatCents } from "@/lib/money";
 import { formatDate, initials } from "@/lib/utils";
 import { PageHeader, EmptyState, StatCard } from "@/components/backoffice/bo-ui";
 import { BoFilterBar } from "@/components/backoffice/bo-filter-bar";
+import { NovoClienteButton } from "@/components/backoffice/novo-cliente-button";
 import type { Prisma } from "@prisma/client";
 
 export const metadata: Metadata = { title: "Clientes" };
@@ -48,7 +49,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <PageHeader eyebrow="Relacionamento" title="Clientes" subtitle={`${rows.length} cadastrados`} />
+      <PageHeader eyebrow="Relacionamento" title="Clientes" subtitle={`${rows.length} cadastrados`} action={<NovoClienteButton />} />
       <BoFilterBar searchPlaceholder="Buscar por nome, e-mail ou telefone…" />
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <StatCard label="Clientes" value={String(rows.length)} icon={Users} />

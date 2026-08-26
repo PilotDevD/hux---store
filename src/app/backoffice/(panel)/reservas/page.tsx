@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { guardModule } from "@/lib/bo-guard";
+import { getCustomerOptions } from "@/lib/customers";
 import { PRODUCT_TYPE_LABELS, SIZE_LABELS, type ProductType, type Size } from "@/lib/enums";
 import { PageHeader } from "@/components/backoffice/bo-ui";
 import {
@@ -12,13 +13,14 @@ export const metadata: Metadata = { title: "Reservas" };
 export default async function ReservasPage() {
   await guardModule("reservas");
 
-  const [reservations, variants] = await Promise.all([
+  const [reservations, variants, customers] = await Promise.all([
     db.reservation.findMany({ orderBy: [{ status: "asc" }, { createdAt: "desc" }] }),
     db.productVariant.findMany({
       where: { active: true, product: { active: true } },
       include: { product: { select: { name: true, brand: true, type: true, basePrice: true } } },
       orderBy: { createdAt: "asc" },
     }),
+    getCustomerOptions(),
   ]);
 
   const variantOptions: VariantOption[] = variants.map((v) => ({
@@ -42,7 +44,7 @@ export default async function ReservasPage() {
         title="Reservas"
         subtitle="Provisione peças do estoque para clientes e feche a venda com um clique."
       />
-      <ReservasManager reservations={rows} variants={variantOptions} />
+      <ReservasManager reservations={rows} variants={variantOptions} customers={customers} />
     </>
   );
 }

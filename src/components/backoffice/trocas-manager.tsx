@@ -25,10 +25,11 @@ export function TrocasManager({ variants }: { variants: VariantOption[] }) {
   const [order, setOrder] = useState<LoadedOrder | null>(null);
   const [sel, setSel] = useState<Record<string, Sel>>({});
   const [reason, setReason] = useState("");
+  const [refundMethod, setRefundMethod] = useState<"DINHEIRO" | "VALE">("DINHEIRO");
   const [pickFor, setPickFor] = useState<string | null>(null);
   const [pickSearch, setPickSearch] = useState("");
 
-  function resetAll() { setCode(""); setOrder(null); setSel({}); setReason(""); setPickFor(null); setPickSearch(""); }
+  function resetAll() { setCode(""); setOrder(null); setSel({}); setReason(""); setRefundMethod("DINHEIRO"); setPickFor(null); setPickSearch(""); }
   function close() { setOpen(false); resetAll(); }
 
   async function lookup() {
@@ -73,14 +74,18 @@ export function TrocasManager({ variants }: { variants: VariantOption[] }) {
     const res = await processReturnAction({
       orderNumber: order.number,
       reason,
+      refundMethod,
       items: chosen.map((it) => {
         const s = sel[it.orderItemId];
         return { orderItemId: it.orderItemId, qty: s.qty, mode: s.mode, newVariantId: s.mode === "TROCAR" ? s.newVariant?.id : undefined };
       }),
     });
     setBusy(false);
-    if (res.ok) { toast(`Registrado: ${res.number}`, "success"); close(); router.refresh(); }
-    else toast(res.error ?? "Erro ao processar.", "error");
+    if (res.ok) {
+      if (res.vale) toast(`Vale ${res.vale.code} gerado — ${formatCents(res.vale.amount)}. Anote e informe o cliente.`, "success");
+      else toast(`Registrado: ${res.number}`, "success");
+      close(); router.refresh();
+    } else toast(res.error ?? "Erro ao processar.", "error");
   }
 
   const label = "data-label mb-1.5 block text-muted";
@@ -226,22 +231,39 @@ export function TrocasManager({ variants }: { variants: VariantOption[] }) {
               </label>
 
               {/* Summary */}
-              {chosen.length > 0 && (
-                <div className="space-y-1 rounded-[var(--radius)] border border-line p-3 text-sm">
-                  {refund > 0 && (
-                    <div className="flex justify-between"><span className="text-muted">Reembolso ao cliente</span><span className="font-semibold text-negative">{formatCents(refund)}</span></div>
-                  )}
-                  {hasTroca && (
-                    <div className="flex justify-between">
-                      <span className="text-muted">Diferença da troca</span>
-                      <span className={cn("font-semibold", diff >= 0 ? "text-positive" : "text-warning")}>
-                        {diff >= 0 ? `+${formatCents(diff)} a cobrar` : `${formatCents(-diff)} a devolver`}
-                      </span>
-                    </div>
-                  )}
-                  <p className="pt-1 text-xs text-faint">O estoque é ajustado automaticamente: itens devolvidos voltam, itens de troca saem.</p>
-                </div>
-              )}
+              {chosen.length > 0 && (() => {
+                const owesCustomer = refund + Math.max(0, -diff);
+                return (
+                  <div className="space-y-2 rounded-[var(--radius)] border border-line p-3 text-sm">
+                    {refund > 0 && (
+                      <div className="flex justify-between"><span className="text-muted">Valor ao cliente (devolução)</span><span className="font-semibold text-negative">{formatCents(refund)}</span></div>
+                    )}
+                    {hasTroca && (
+                      <div className="flex justify-between">
+                        <span className="text-muted">Diferença da troca</span>
+                        <span className={cn("font-semibold", diff >= 0 ? "text-positive" : "text-warning")}>
+                          {diff >= 0 ? `+${formatCents(diff)} a cobrar` : `${formatCents(-diff)} a devolver`}
+                        </span>
+                      </div>
+                    )}
+
+                    {owesCustomer > 0 && (
+                      <div className="border-t border-line pt-2">
+                        <span className="data-label mb-1.5 block text-muted">Como devolver ao cliente</span>
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => setRefundMethod("DINHEIRO")} className={cn("flex-1 rounded-[var(--radius)] border px-3 py-1.5 text-xs font-medium", refundMethod === "DINHEIRO" ? "border-orange bg-orange/10 text-orange" : "border-line text-muted hover:border-ink-soft")}>Dinheiro / estorno</button>
+                          <button type="button" onClick={() => setRefundMethod("VALE")} className={cn("flex-1 rounded-[var(--radius)] border px-3 py-1.5 text-xs font-medium", refundMethod === "VALE" ? "border-info bg-info/10 text-info" : "border-line text-muted hover:border-ink-soft")}>Vale (crédito na loja)</button>
+                        </div>
+                        {refundMethod === "VALE" && (
+                          <p className="mt-1.5 text-xs text-info">Será gerado um vale de <strong>{formatCents(owesCustomer)}</strong> (cupom de uso único) para o cliente usar numa próxima compra.</p>
+                        )}
+                      </div>
+                    )}
+
+                    <p className="pt-1 text-xs text-faint">O estoque é ajustado automaticamente: itens devolvidos voltam, itens de troca saem.</p>
+                  </div>
+                );
+              })()}
 
               <div className="flex justify-end gap-3 pt-1">
                 <button onClick={close} className="btn btn-ghost">Cancelar</button>

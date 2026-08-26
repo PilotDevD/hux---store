@@ -225,6 +225,7 @@ export const MODULES = [
   { id: "clientes", label: "Clientes" },
   { id: "avisos", label: "Avise-me" },
   { id: "despesas", label: "Despesas" },
+  { id: "relatorios", label: "Relatórios" },
   { id: "notificacoes", label: "Notificações" },
   { id: "frete", label: "Frete" },
   { id: "auditoria", label: "Auditoria" },

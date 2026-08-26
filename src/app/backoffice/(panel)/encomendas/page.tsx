@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { guardModule } from "@/lib/bo-guard";
+import { getCustomerOptions } from "@/lib/customers";
 import { PageHeader } from "@/components/backoffice/bo-ui";
 import { EncomendasManager, type BackorderRow } from "@/components/backoffice/encomendas-manager";
 
@@ -8,9 +9,10 @@ export const metadata: Metadata = { title: "Encomendas" };
 
 export default async function EncomendasPage() {
   await guardModule("encomendas");
-  const backorders = await db.backorder.findMany({
-    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
-  });
+  const [backorders, customers] = await Promise.all([
+    db.backorder.findMany({ orderBy: [{ status: "asc" }, { createdAt: "desc" }] }),
+    getCustomerOptions(),
+  ]);
 
   const rows: BackorderRow[] = backorders.map((b) => ({
     id: b.id, brand: b.brand, productType: b.productType, modelName: b.modelName,
@@ -27,7 +29,7 @@ export default async function EncomendasPage() {
         title="Encomendas"
         subtitle="Pedidos de peças fora de estoque ou sob medida, por cliente."
       />
-      <EncomendasManager backorders={rows} />
+      <EncomendasManager backorders={rows} customers={customers} />
     </>
   );
 }

@@ -6,6 +6,7 @@ import { Plus, Loader2, Briefcase, Search, X, Minus, Check, RotateCcw, Pencil } 
 import { createMalaAction, editMalaAction, settleMalaAction, cancelMalaAction } from "@/app/actions/backoffice-mala";
 import { Modal } from "./modal";
 import { EmptyState } from "./bo-ui";
+import { CustomerAutocomplete, type CustomerLite } from "./customer-autocomplete";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { formatCents } from "@/lib/money";
@@ -19,7 +20,7 @@ export type MalaRow = {
   items: MalaItemRow[];
 };
 
-export function MalaManager({ malas, variants }: { malas: MalaRow[]; variants: VariantOption[] }) {
+export function MalaManager({ malas, variants, customers }: { malas: MalaRow[]; variants: VariantOption[]; customers: CustomerLite[] }) {
   const router = useRouter();
   const { toast } = useToast();
   const [openNew, setOpenNew] = useState(false);
@@ -171,7 +172,14 @@ export function MalaManager({ malas, variants }: { malas: MalaRow[]; variants: V
       <Modal open={openNew} onClose={() => { setOpenNew(false); reset(); }} title={editingId ? "Editar mala" : "Nova mala HUX"} wide dismissible={false}>
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <label><span className={label}>Cliente *</span><input className="field" value={customerName} onChange={(e) => setCustomerName(e.target.value)} /></label>
+            <div><span className={label}>Cliente *</span>
+              <CustomerAutocomplete
+                customers={customers}
+                name={customerName}
+                onName={setCustomerName}
+                onPick={(c) => { setCustomerName(c.name); if (c.phone) setCustomerPhone(c.phone); }}
+              />
+            </div>
             <label><span className={label}>Telefone (WhatsApp)</span><input className="field" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="(11) 99999-9999" /></label>
           </div>
           <label className="block max-w-[200px]"><span className={label}>Prazo de devolução (dias)</span>

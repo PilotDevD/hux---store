@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft, MessageCircle, Mail, User, CreditCard, FileText } from "lucide-react";
 import { guardModule } from "@/lib/bo-guard";
+import { db } from "@/lib/db";
 import { getOrderForStaff } from "@/lib/order-queries";
 import { formatDate, formatDateTime, onlyDigits } from "@/lib/utils";
 import { formatCents } from "@/lib/money";
@@ -12,13 +13,20 @@ import { OrderTimeline } from "@/components/orders/order-timeline";
 import { OrderSummary } from "@/components/orders/order-summary";
 import { OrderActions } from "@/components/backoffice/order-actions";
 import { OrderCouponEditor } from "@/components/backoffice/order-coupon-editor";
+import { OrderSellerEditor } from "@/components/backoffice/order-seller-editor";
 
 export const metadata: Metadata = { title: "Pedido" };
 
 export default async function BoOrderDetail({ params }: { params: Promise<{ number: string }> }) {
-  await guardModule("pedidos");
+  const staff = await guardModule("pedidos");
   const { number } = await params;
-  const order = await getOrderForStaff(number);
+  const [order, sellerRow, sellers] = await Promise.all([
+    getOrderForStaff(number),
+    db.order.findUnique({ where: { number }, select: { soldByName: true, soldByUserId: true } }),
+    staff.role === "ADMIN"
+      ? db.user.findMany({ where: { active: true }, select: { id: true, displayName: true }, orderBy: { displayName: "asc" } })
+      : Promise.resolve([] as { id: string; displayName: string }[]),
+  ]);
   if (!order) notFound();
 
   const phone = onlyDigits(order.customer.phone ?? "");
@@ -80,6 +88,15 @@ export default async function BoOrderDetail({ params }: { params: Promise<{ numb
             {order.paidAt && <p className="mt-2 text-xs text-faint">Pago em {formatDateTime(order.paidAt)}</p>}
 
             <OrderCouponEditor number={order.number} currentCode={order.couponCode} />
+
+            {staff.role === "ADMIN" && (
+              <OrderSellerEditor
+                number={order.number}
+                currentSeller={sellerRow?.soldByName ?? null}
+                currentSellerId={sellerRow?.soldByUserId ?? null}
+                sellers={sellers.map((s) => ({ id: s.id, name: s.displayName }))}
+              />
+            )}
 
             {order.installments.length > 0 && (
               <div className="mt-4 space-y-2 border-t border-line pt-3">

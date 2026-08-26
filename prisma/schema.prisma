@@ -302,6 +302,8 @@ model ReturnRequest {
   customerName String
   refundAmount Int      @default(0) // cents devolvidos ao cliente
   exchangeDiff Int      @default(0) // cents (+ a cobrar / - a devolver) nas trocas
+  refundMethod String   @default("DINHEIRO") // DINHEIRO | VALE
+  creditCouponCode String? // código do vale gerado (crédito na loja)
   handledById  String?
   handledByName String?
   createdAt    DateTime @default(now())

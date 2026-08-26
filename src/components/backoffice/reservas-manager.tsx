@@ -8,6 +8,7 @@ import {
 } from "@/app/actions/backoffice-reservas";
 import { Modal } from "./modal";
 import { EmptyState } from "./bo-ui";
+import { CustomerAutocomplete, type CustomerLite } from "./customer-autocomplete";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { formatCents } from "@/lib/money";
@@ -25,9 +26,11 @@ export type ReservationRow = {
 export function ReservasManager({
   reservations,
   variants,
+  customers,
 }: {
   reservations: ReservationRow[];
   variants: VariantOption[];
+  customers: CustomerLite[];
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -165,9 +168,14 @@ export function ReservasManager({
             <label><span className={label}>Quantidade</span>
               <input className="field" value={qty} onChange={(e) => setQty(e.target.value.replace(/\D/g, ""))} inputMode="numeric" />
             </label>
-            <label className="sm:col-span-2"><span className={label}>Cliente *</span>
-              <input className="field" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Nome do cliente" />
-            </label>
+            <div className="sm:col-span-2"><span className={label}>Cliente *</span>
+              <CustomerAutocomplete
+                customers={customers}
+                name={customerName}
+                onName={setCustomerName}
+                onPick={(c) => { setCustomerName(c.name); if (c.phone) setCustomerPhone(c.phone); }}
+              />
+            </div>
           </div>
           <label className="block"><span className={label}>Telefone (WhatsApp)</span>
             <input className="field" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="(11) 99999-9999" />

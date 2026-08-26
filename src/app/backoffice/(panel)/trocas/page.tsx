@@ -110,7 +110,11 @@ export default async function TrocasPage({ searchParams }: { searchParams: Promi
                     <Link href={`/backoffice/pedidos/${r.orderNumber}`} className="font-mono text-xs text-ink-soft hover:text-orange">venda {r.orderNumber}</Link>
                   </div>
                   <div className="text-right">
-                    {r.refundAmount > 0 && <p className="text-sm font-semibold text-negative">Reembolso {formatCents(r.refundAmount)}</p>}
+                    {r.creditCouponCode ? (
+                      <p className="text-sm font-semibold text-info">Vale <span className="font-mono">{r.creditCouponCode}</span></p>
+                    ) : r.refundAmount > 0 ? (
+                      <p className="text-sm font-semibold text-negative">Reembolso {formatCents(r.refundAmount)}</p>
+                    ) : null}
                     {isTroca && (
                       <p className={`text-sm font-semibold ${r.exchangeDiff >= 0 ? "text-positive" : "text-warning"}`}>
                         {r.exchangeDiff >= 0 ? `+${formatCents(r.exchangeDiff)} cobrado` : `${formatCents(-r.exchangeDiff)} devolvido`}
