@@ -9,10 +9,14 @@ export const metadata: Metadata = { title: "Encomendas" };
 
 export default async function EncomendasPage() {
   await guardModule("encomendas");
-  const [backorders, customers] = await Promise.all([
+  const [backorders, customers, products] = await Promise.all([
     db.backorder.findMany({ orderBy: [{ status: "asc" }, { createdAt: "desc" }] }),
     getCustomerOptions(),
+    db.product.findMany({ select: { name: true, modelName: true }, orderBy: { name: "asc" } }),
   ]);
+
+  // Existing model/product names to suggest in the encomenda form.
+  const models = [...new Set(products.flatMap((p) => [p.modelName, p.name].filter(Boolean) as string[]))].sort();
 
   const rows: BackorderRow[] = backorders.map((b) => ({
     id: b.id, brand: b.brand, productType: b.productType, modelName: b.modelName,
@@ -29,7 +33,7 @@ export default async function EncomendasPage() {
         title="Encomendas"
         subtitle="Pedidos de peças fora de estoque ou sob medida, por cliente."
       />
-      <EncomendasManager backorders={rows} customers={customers} />
+      <EncomendasManager backorders={rows} customers={customers} models={models} />
     </>
   );
 }

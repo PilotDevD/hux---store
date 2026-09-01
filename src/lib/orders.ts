@@ -117,7 +117,7 @@ export async function createOrder(
       ? buildPixPayload({
           key: process.env.PIX_KEY || "contato@hux.com.br",
           merchantName: process.env.PIX_MERCHANT_NAME || "HUX RUN",
-          merchantCity: process.env.PIX_MERCHANT_CITY || "SAO PAULO",
+          merchantCity: process.env.PIX_MERCHANT_CITY || "ARARUAMA",
           amountCents: total,
           txid: number.replace("-", ""),
         })

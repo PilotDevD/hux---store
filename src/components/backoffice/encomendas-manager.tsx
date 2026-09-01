@@ -42,7 +42,7 @@ const statusLabel: Record<string, string> = {
   PENDENTE: "Pendente", CONCLUIDA: "Concluída", CANCELADA: "Cancelada",
 };
 
-export function EncomendasManager({ backorders, customers }: { backorders: BackorderRow[]; customers: CustomerLite[] }) {
+export function EncomendasManager({ backorders, customers, models }: { backorders: BackorderRow[]; customers: CustomerLite[]; models: string[] }) {
   const router = useRouter();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -157,7 +157,10 @@ export function EncomendasManager({ backorders, customers }: { backorders: Backo
               </select>
             </label>
             <label><span className={label}>Modelo</span>
-              <input className="field" value={f.modelName} onChange={(e) => set("modelName", e.target.value)} placeholder="Ex: Ultramaratonista" />
+              <input className="field" list="encomenda-modelos" value={f.modelName} onChange={(e) => set("modelName", e.target.value)} placeholder="Ex: Ultramaratonista" autoComplete="off" />
+              <datalist id="encomenda-modelos">
+                {models.map((m) => <option key={m} value={m} />)}
+              </datalist>
             </label>
             <label><span className={label}>Cor *</span>
               <input className="field" value={f.color} onChange={(e) => set("color", e.target.value)} placeholder="Ex: Preto" />

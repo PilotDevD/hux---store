@@ -90,6 +90,28 @@ export function ProductForm({
   const removeVariant = (i: number) =>
     setF((p) => ({ ...p, variants: p.variants.filter((_, idx) => idx !== i) }));
 
+  const [variantSort, setVariantSort] = useState("");
+  function sortVariants(key: string) {
+    setVariantSort(key);
+    if (!key) return;
+    const num = (v: string) => { const n = Number(String(v).replace(/\./g, "").replace(",", ".")); return isNaN(n) ? 0 : n; };
+    const sizeIdx = (s: string) => { const i = (SIZES as readonly string[]).indexOf(s); return i < 0 ? 99 : i; };
+    setF((p) => {
+      const arr = [...p.variants];
+      arr.sort((a, b) => {
+        switch (key) {
+          case "size": return sizeIdx(a.size) - sizeIdx(b.size);
+          case "color": return a.color.localeCompare(b.color, "pt-BR");
+          case "stock": return num(b.stock) - num(a.stock);
+          case "cost": return num(a.cost) - num(b.cost);
+          case "price": return num(a.priceOverride) - num(b.priceOverride);
+          default: return 0;
+        }
+      });
+      return { ...p, variants: arr };
+    });
+  }
+
   async function handleFiles(files: FileList | File[]) {
     const list = Array.from(files).filter((x) => x.type.startsWith("image/"));
     if (list.length === 0) return;
@@ -323,9 +345,24 @@ export function ProductForm({
 
       {/* Variants */}
       <div className="card p-6">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h2 className="headline text-lg">Variantes (cor / tamanho)</h2>
-          <button onClick={addVariant} className="btn btn-ghost px-3 py-2 text-xs"><Plus size={14} /> Adicionar</button>
+          <div className="flex items-center gap-2">
+            {f.variants.length > 1 && (
+              <label className="flex items-center gap-1.5 text-xs text-muted">
+                Ordenar:
+                <select className="field py-1.5 pr-7 text-xs" value={variantSort} onChange={(e) => sortVariants(e.target.value)}>
+                  <option value="">—</option>
+                  <option value="size">Tamanho</option>
+                  <option value="color">Cor</option>
+                  <option value="stock">Estoque</option>
+                  <option value="cost">Custo</option>
+                  <option value="price">Preço próprio</option>
+                </select>
+              </label>
+            )}
+            <button onClick={addVariant} className="btn btn-ghost px-3 py-2 text-xs"><Plus size={14} /> Adicionar</button>
+          </div>
         </div>
         {f.id && (
           <p className="mb-3 text-xs text-faint">

@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 const INFO = [
   { icon: Mail, label: "E-mail", value: "contato@hux.com.br", href: "mailto:contato@hux.com.br" },
   { icon: MessageCircle, label: "WhatsApp", value: "(11) 98765-4321", href: "https://wa.me/5511987654321" },
-  { icon: MapPin, label: "Base", value: "São Paulo · SP", href: undefined },
+  { icon: MapPin, label: "Base", value: "Araruama · RJ", href: undefined },
   { icon: Clock, label: "Atendimento", value: "Seg a Sex · 9h às 18h", href: undefined },
 ];
 

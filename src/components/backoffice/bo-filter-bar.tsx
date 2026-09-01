@@ -20,11 +20,13 @@ export function BoFilterBar({
   searchPlaceholder = "Buscar…",
   selects = [],
   dateRange = false,
+  noSearch = false,
 }: {
   searchParam?: string;
   searchPlaceholder?: string;
   selects?: FilterSelect[];
   dateRange?: boolean;
+  noSearch?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -63,20 +65,22 @@ export function BoFilterBar({
 
   return (
     <div className="mb-5 flex flex-wrap items-center gap-2">
-      <div className="relative min-w-[200px] flex-1 md:max-w-xs">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={searchPlaceholder}
-          className="field py-2.5 pl-9"
-        />
-        {search && (
-          <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-faint hover:text-ink" aria-label="Limpar">
-            <X size={15} />
-          </button>
-        )}
-      </div>
+      {!noSearch && (
+        <div className="relative min-w-[200px] flex-1 md:max-w-xs">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={searchPlaceholder}
+            className="field py-2.5 pl-9"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-faint hover:text-ink" aria-label="Limpar">
+              <X size={15} />
+            </button>
+          )}
+        </div>
+      )}
 
       <span className="hidden text-faint sm:inline"><SlidersHorizontal size={15} /></span>
 

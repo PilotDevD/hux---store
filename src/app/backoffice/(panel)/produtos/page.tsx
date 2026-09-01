@@ -1,19 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import Image from "next/image";
-import { Plus, Shirt, Pencil } from "lucide-react";
+import { Plus } from "lucide-react";
 import { guardModule } from "@/lib/bo-guard";
 import { db } from "@/lib/db";
 import { parseJson } from "@/lib/utils";
-import { formatCents } from "@/lib/money";
 import {
   PRODUCT_TYPES, PRODUCT_TYPE_LABELS, SIZES, SIZE_LABELS, GENDERS, GENDER_LABELS,
   type ProductType,
 } from "@/lib/enums";
 import { getBrandNames } from "@/lib/brands";
-import { PageHeader, EmptyState } from "@/components/backoffice/bo-ui";
+import { PageHeader } from "@/components/backoffice/bo-ui";
 import { BoFilterBar } from "@/components/backoffice/bo-filter-bar";
-import { Badge } from "@/components/ui/badge";
+import { ProductsList, type ProductListItem } from "@/components/backoffice/products-list";
 import type { Prisma } from "@prisma/client";
 
 export const metadata: Metadata = { title: "Produtos" };
@@ -24,7 +22,6 @@ const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v
 export default async function ProductsPage({ searchParams }: { searchParams: Promise<SP> }) {
   await guardModule("produtos");
   const sp = await searchParams;
-  const q = first(sp.q)?.trim();
   const brand = first(sp.brand);
   const type = first(sp.tipo);
   const gender = first(sp.genero);
@@ -35,14 +32,10 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
   if (brand) where.brand = brand;
   if (type) where.type = type;
   if (gender) where.gender = gender;
-  if (size) where.variants = { some: { size, active: true } };
+  // Size filter = "available in this size" (has an active variant with stock).
+  if (size) where.variants = { some: { size, active: true, stock: { gt: 0 } } };
   if (status === "ativo") where.active = true;
   if (status === "inativo") where.active = false;
-  if (q) where.OR = [
-    { name: { contains: q, mode: "insensitive" } },
-    { modelName: { contains: q, mode: "insensitive" } },
-    { variants: { some: { sku: { contains: q, mode: "insensitive" } } } },
-  ];
 
   const [products, brandNames] = await Promise.all([
     db.product.findMany({
@@ -53,12 +46,33 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
     getBrandNames(),
   ]);
 
+  const sizeLabel = size ? SIZE_LABELS[size as keyof typeof SIZE_LABELS] ?? size : "";
+
+  const items: ProductListItem[] = products.map((p) => {
+    const images = parseJson<string[]>(p.images, []);
+    const activeVariants = p.variants.filter((v) => v.active);
+    // When filtering by size, show the stock for THAT size (not the total).
+    const stock = size
+      ? activeVariants.filter((v) => v.size === size).reduce((s, v) => s + v.stock, 0)
+      : activeVariants.reduce((s, v) => s + v.stock, 0);
+    const typeLabel = PRODUCT_TYPE_LABELS[p.type as ProductType] ?? p.type;
+    const searchText = [
+      p.name, p.brand, p.modelName ?? "", typeLabel, p.collection?.name ?? "", p.supplierCode ?? "",
+      ...activeVariants.map((v) => `${v.sku} ${v.color} ${v.size}`),
+    ].join(" ").toLowerCase();
+    return {
+      id: p.id, name: p.name, brand: p.brand, typeLabel,
+      image: images[0] ?? null, price: p.basePrice, stock, variantsCount: activeVariants.length,
+      active: p.active, featured: p.featured, supplierCode: p.supplierCode ?? null, searchText,
+    };
+  });
+
   return (
     <>
       <PageHeader
         eyebrow="Catálogo"
         title="Produtos"
-        subtitle={`${products.length} produtos cadastrados`}
+        subtitle={`${products.length} produtos${size ? ` disponíveis no tamanho ${sizeLabel}` : " cadastrados"}`}
         action={
           <Link href="/backoffice/produtos/novo" className="btn btn-primary">
             <Plus size={16} /> Novo produto
@@ -67,7 +81,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
       />
 
       <BoFilterBar
-        searchPlaceholder="Buscar por nome, modelo ou SKU…"
+        noSearch
         selects={[
           { param: "brand", label: "Marca", options: brandNames.map((b) => ({ value: b, label: b })) },
           { param: "tipo", label: "Tipo", options: PRODUCT_TYPES.map((t) => ({ value: t, label: PRODUCT_TYPE_LABELS[t] })) },
@@ -77,48 +91,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
         ]}
       />
 
-      {products.length === 0 ? (
-        <EmptyState
-          icon={Shirt}
-          title="Nenhum produto encontrado"
-          hint="Ajuste os filtros ou cadastre um novo produto."
-          action={<Link href="/backoffice/produtos/novo" className="btn btn-primary mt-1"><Plus size={16} /> Novo produto</Link>}
-        />
-      ) : (
-        <div className="card divide-y divide-line">
-          {products.map((p) => {
-            const images = parseJson<string[]>(p.images, []);
-            const stock = p.variants.reduce((s, v) => s + v.stock, 0);
-            return (
-              <Link
-                key={p.id}
-                href={`/backoffice/produtos/${p.id}`}
-                className="flex items-center gap-4 px-4 py-3 transition-colors hover:bg-elevated"
-              >
-                <div className="relative size-14 shrink-0 overflow-hidden rounded-[var(--radius)] border border-line bg-void">
-                  {images[0] && <Image src={images[0]} alt="" fill sizes="56px" className="object-cover" />}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="truncate font-semibold">{p.name}</p>
-                    {!p.active && <Badge tone="danger">Inativo</Badge>}
-                    {p.featured && <Badge tone="warning">Destaque</Badge>}
-                  </div>
-                  <p className="font-mono text-xs text-muted">
-                    {p.brand} · {PRODUCT_TYPE_LABELS[p.type as ProductType] ?? p.type} · {p.variants.length} variantes
-                    {p.supplierCode ? ` · forn. ${p.supplierCode}` : ""}
-                  </p>
-                </div>
-                <div className="hidden text-right sm:block">
-                  <p className="font-semibold">{formatCents(p.basePrice)}</p>
-                  <p className={`font-mono text-xs ${stock <= 3 ? "text-warning" : "text-muted"}`}>{stock} un</p>
-                </div>
-                <Pencil size={15} className="text-faint" />
-              </Link>
-            );
-          })}
-        </div>
-      )}
+      <ProductsList products={items} sizeFilter={sizeLabel} />
     </>
   );
 }

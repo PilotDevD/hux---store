@@ -57,7 +57,7 @@ export function buildPixPayload(opts: {
     tlv("54", amount) +
     tlv("58", "BR") +
     tlv("59", sanitize(merchantName, 25) || "HUX RUN") +
-    tlv("60", sanitize(merchantCity, 15) || "SAO PAULO") +
+    tlv("60", sanitize(merchantCity, 15) || "ARARUAMA") +
     tlv("62", tlv("05", txid));
 
   payload += "6304"; // CRC id + length

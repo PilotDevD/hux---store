@@ -58,7 +58,7 @@ export default async function ReciboPage({ params }: { params: Promise<{ number:
                 <p className="mb-1 text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Loja</p>
                 <p className="font-semibold">{process.env.PIX_MERCHANT_NAME || "HUX RUN LTDA"}</p>
                 <p className="text-sm text-neutral-600">contato@hux.com.br</p>
-                <p className="text-sm text-neutral-600">São Paulo · SP</p>
+                <p className="text-sm text-neutral-600">Araruama · RJ</p>
               </div>
               <div>
                 <p className="mb-1 text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Cliente</p>

@@ -9,6 +9,7 @@ import { formatDate, onlyDigits, initials } from "@/lib/utils";
 import { PRODUCT_TYPE_LABELS } from "@/lib/enums";
 import { PageHeader, StatCard } from "@/components/backoffice/bo-ui";
 import { OrderStatusBadge, Badge } from "@/components/ui/badge";
+import { ClienteFormButton } from "@/components/backoffice/cliente-form-button";
 
 export const metadata: Metadata = { title: "Cliente" };
 
@@ -50,9 +51,9 @@ export default async function ClienteDetail({ params }: { params: Promise<{ id: 
         <ChevronLeft size={14} /> Voltar
       </Link>
 
-      <div className="mb-6 flex items-center gap-4">
+      <div className="mb-6 flex flex-wrap items-center gap-4">
         <div className="grid size-14 place-items-center rounded-full bg-elevated font-display text-lg text-orange">{initials(customer.name)}</div>
-        <div>
+        <div className="flex-1">
           <h1 className="headline text-3xl">{customer.name}</h1>
           <div className="mt-1 flex flex-wrap items-center gap-4 text-sm">
             {customer.email
@@ -62,6 +63,10 @@ export default async function ClienteDetail({ params }: { params: Promise<{ id: 
             {customer.origin === "BALCAO" && <span className="rounded bg-elevated px-1.5 py-0.5 text-[0.6rem] font-medium uppercase text-muted">Balcão</span>}
           </div>
         </div>
+        <ClienteFormButton
+          initial={{ id: customer.id, name: customer.name, email: customer.email ?? "", phone: customer.phone ?? "", cpf: customer.cpf ?? "" }}
+          variant="ghost"
+        />
       </div>
 
       <div className="mb-8 grid gap-4 sm:grid-cols-3">
