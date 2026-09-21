@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { guardModule } from "@/lib/bo-guard";
 import { getBrandNames } from "@/lib/brands";
 import { getCustomerOptions } from "@/lib/customers";
+import { ambassadorBalancesByEmail } from "@/lib/cashback";
+import type { InstallmentFee, CardMachineOption } from "@/lib/card-machine-fee";
 import { parseJson } from "@/lib/utils";
 import { formatCents } from "@/lib/money";
 import { PRODUCT_TYPE_LABELS, SIZE_LABELS, type ProductType, type Size } from "@/lib/enums";
@@ -19,7 +21,7 @@ export default async function VendasPage() {
   await guardModule("vendas");
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
-  const [allSales, sellers, monthPaid, commissionOrders, variants, customers, brandNames] = await Promise.all([
+  const [allSales, sellers, monthPaid, commissionOrders, variants, customers, brandNames, cardMachines, ambBalances] = await Promise.all([
     db.order.findMany({
       orderBy: { createdAt: "desc" },
       take: 500,
@@ -39,11 +41,13 @@ export default async function VendasPage() {
     }),
     db.productVariant.findMany({
       where: { active: true, product: { active: true } },
-      include: { product: { select: { name: true, brand: true, type: true, basePrice: true } } },
+      include: { product: { select: { name: true, brand: true, type: true, basePrice: true, supplierCode: true } } },
       orderBy: { createdAt: "asc" },
     }),
     getCustomerOptions(),
     getBrandNames(),
+    db.cardMachine.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+    ambassadorBalancesByEmail(),
   ]);
 
   // commission per seller this month
@@ -65,10 +69,13 @@ export default async function VendasPage() {
   const manual = monthPaid.filter((o) => o.channel === "MANUAL");
   const rev = (arr: typeof monthPaid) => arr.reduce((s, o) => s + (o.subtotal - o.discountTotal), 0);
 
-  const variantOptions: VariantOption[] = variants.map((v) => ({
-    id: v.id, stock: v.stock, price: v.priceOverride ?? v.product.basePrice,
-    label: `${v.product.name} · ${SIZE_LABELS[v.size as Size] ?? v.size} · ${v.color} · ${PRODUCT_TYPE_LABELS[v.product.type as ProductType] ?? v.product.type} (${v.sku})`,
-  }));
+  const variantOptions: VariantOption[] = variants.map((v) => {
+    const label = `${v.product.name} · ${SIZE_LABELS[v.size as Size] ?? v.size} · ${v.color} · ${PRODUCT_TYPE_LABELS[v.product.type as ProductType] ?? v.product.type} (${v.sku})`;
+    return {
+      id: v.id, stock: v.stock, price: v.priceOverride ?? v.product.basePrice, label,
+      search: `${label} ${v.sku} ${v.product.supplierCode ?? ""} ${v.product.brand}`.toLowerCase(),
+    };
+  });
 
   const saleRows: SaleRow[] = allSales.map((o) => ({
     number: o.number,
@@ -94,7 +101,13 @@ export default async function VendasPage() {
         <StatCard label="Total de vendas (mês)" value={String(monthPaid.length)} hint={formatCents(rev(monthPaid))} icon={Receipt} />
       </div>
 
-      <VendasManager variants={variantOptions} sellers={sellers.map((s) => ({ id: s.id, name: s.displayName }))} customers={customers} />
+      <VendasManager
+        variants={variantOptions}
+        sellers={sellers.map((s) => ({ id: s.id, name: s.displayName }))}
+        customers={customers}
+        machines={cardMachines.map((m): CardMachineOption => ({ id: m.id, name: m.name, provider: m.provider, debitFee: m.debitFee, creditFee: m.creditFee, pixFee: m.pixFee, installmentFees: parseJson<InstallmentFee[]>(m.installmentFees, []) }))}
+        ambassadors={ambBalances}
+      />
 
       <div className="mt-8">
         <p className="eyebrow mb-4">Todas as vendas</p>

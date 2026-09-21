@@ -14,11 +14,11 @@ export default async function EmbaixadoresPage() {
     include: { coupon: { select: { id: true, code: true, value: true } } },
   });
 
-  // usage pulled straight from the store's orders that used each coupon
+  // usage pulled straight from the store's confirmed orders that used each coupon
   const couponIds = ambassadors.map((a) => a.couponId).filter(Boolean) as string[];
   const orders = couponIds.length
     ? await db.order.findMany({
-        where: { couponId: { in: couponIds }, status: { not: "CANCELADO" } },
+        where: { couponId: { in: couponIds }, status: { not: "CANCELADO" }, paymentStatus: "CONFIRMADO" },
         select: { couponId: true, subtotal: true, discountTotal: true },
       })
     : [];
@@ -32,13 +32,27 @@ export default async function EmbaixadoresPage() {
     byCoupon.set(o.couponId, cur);
   }
 
+  // cashback já resgatado por embaixador
+  const redemptions = await db.order.findMany({
+    where: { cashbackAmbassadorId: { in: ambassadors.map((a) => a.id) }, status: { not: "CANCELADO" } },
+    select: { cashbackAmbassadorId: true, cashbackUsed: true },
+  });
+  const redeemedByAmb = new Map<string, number>();
+  for (const r of redemptions) {
+    if (!r.cashbackAmbassadorId) continue;
+    redeemedByAmb.set(r.cashbackAmbassadorId, (redeemedByAmb.get(r.cashbackAmbassadorId) ?? 0) + r.cashbackUsed);
+  }
+
   const rows: AmbassadorRow[] = ambassadors.map((a) => {
     const stats = a.couponId ? byCoupon.get(a.couponId) ?? { uses: 0, revenue: 0 } : { uses: 0, revenue: 0 };
+    const earned = Math.round(stats.revenue * (a.cashbackPct / 100));
+    const redeemed = redeemedByAmb.get(a.id) ?? 0;
     return {
       id: a.id, name: a.name, email: a.email, phone: a.phone,
       code: a.coupon?.code ?? "—", discountPct: a.coupon?.value ?? 0, cashbackPct: a.cashbackPct,
       active: a.active, notes: a.notes,
-      uses: stats.uses, revenue: stats.revenue, cashback: Math.round(stats.revenue * (a.cashbackPct / 100)),
+      uses: stats.uses, revenue: stats.revenue, cashback: earned,
+      redeemed, balance: Math.max(0, earned - redeemed),
     };
   });
 

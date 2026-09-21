@@ -9,16 +9,20 @@ import { useToast } from "@/components/ui/toast";
 import { formatCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { MANUAL_PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from "@/lib/enums";
+import { feeForSale, netAfterFee, type CardMachineOption } from "@/lib/card-machine-fee";
 
-export type VariantOption = { id: string; label: string; stock: number; price: number };
+export type VariantOption = { id: string; label: string; stock: number; price: number; search?: string };
 export type CustomerOption = { id: string; name: string; phone: string | null; email: string | null };
+export type AmbassadorBalance = { email: string; balance: number };
 
 export function VendasManager({
-  variants, sellers, customers,
+  variants, sellers, customers, machines, ambassadors,
 }: {
   variants: VariantOption[];
   sellers: { id: string; name: string }[];
   customers: CustomerOption[];
+  machines: CardMachineOption[];
+  ambassadors: AmbassadorBalance[];
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -43,14 +47,18 @@ export function VendasManager({
   const [couponInput, setCouponInput] = useState("");
   const [coupon, setCoupon] = useState<{ code: string; type: string; value: number; minOrder: number; description?: string } | null>(null);
   const [couponBusy, setCouponBusy] = useState(false);
+  // Maquininha + cashback de embaixador
+  const [machineId, setMachineId] = useState("");
+  const [cashbackUse, setCashbackUse] = useState("");
   // Venda a prazo (crediário)
   const [downPayment, setDownPayment] = useState("");
   const [aprazoParcelas, setAprazoParcelas] = useState("2");
   const [firstDueDate, setFirstDueDate] = useState("");
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    return (q ? variants.filter((v) => v.label.toLowerCase().includes(q)) : variants).slice(0, 25);
+    const q = search.trim().toLowerCase();
+    if (!q) return variants.slice(0, 25);
+    return variants.filter((v) => (v.search ?? v.label).toLowerCase().includes(q)).slice(0, 25);
   }, [search, variants]);
 
   const custMatches = useMemo(() => {
@@ -77,7 +85,21 @@ export function VendasManager({
 
   const manualDiscountCents = toCents(discount);
   const discountTotalCents = Math.min(subtotal, couponDiscountCents + manualDiscountCents);
-  const totalCents = Math.max(0, subtotal - discountTotalCents);
+  const preCashbackTotal = Math.max(0, subtotal - discountTotalCents);
+
+  // Cashback de embaixador: disponível se o cliente é um embaixador com saldo.
+  const custEmail = (selectedCustomer?.email ?? newEmail ?? "").trim().toLowerCase();
+  const ambBalance = custEmail ? (ambassadors.find((a) => a.email.toLowerCase() === custEmail)?.balance ?? 0) : 0;
+  const cashbackMax = Math.min(ambBalance, preCashbackTotal);
+  const cashbackCents = Math.min(cashbackMax, toCents(cashbackUse));
+
+  const totalCents = Math.max(0, preCashbackTotal - cashbackCents);
+
+  // Maquininha: taxa + valor líquido sobre o que o cliente paga.
+  const machine = machines.find((m) => m.id === machineId) ?? null;
+  const machineFeePct = machine ? feeForSale(machine, method, method === "CARTAO" ? (Number(installments) || 1) : 1) : 0;
+  const netReceived = machine ? netAfterFee(totalCents, machineFeePct) : totalCents;
+
   const entradaCents = Math.min(totalCents, toCents(downPayment));
   const financedCents = Math.max(0, totalCents - entradaCents);
   const nParcelas = Math.max(1, Number(aprazoParcelas) || 1);
@@ -86,7 +108,7 @@ export function VendasManager({
   function add(v: VariantOption) { setCart((c) => (c.some((x) => x.v.id === v.id) ? c : [...c, { v, qty: 1 }])); setSearch(""); }
   function setQty(id: string, qty: number) { setCart((c) => c.map((x) => (x.v.id === id ? { ...x, qty: Math.max(1, Math.min(x.v.stock, qty)) } : x))); }
   function resetCustomer() { setSelectedCustomer(null); setCustSearch(""); setNewMode(false); setNewName(""); setNewPhone(""); setNewEmail(""); }
-  function reset() { resetCustomer(); setMethod("DINHEIRO"); setInstallments("1"); setDiscount(""); setNote(""); setCart([]); setSearch(""); setDownPayment(""); setAprazoParcelas("2"); setFirstDueDate(""); setCouponInput(""); setCoupon(null); }
+  function reset() { resetCustomer(); setMethod("DINHEIRO"); setInstallments("1"); setDiscount(""); setNote(""); setCart([]); setSearch(""); setDownPayment(""); setAprazoParcelas("2"); setFirstDueDate(""); setCouponInput(""); setCoupon(null); setMachineId(""); setCashbackUse(""); }
 
   async function applyCoupon() {
     const code = couponInput.trim();
@@ -118,6 +140,8 @@ export function VendasManager({
       aprazoParcelas: method === "A_PRAZO" ? nParcelas : undefined,
       firstDueDate: method === "A_PRAZO" && firstDueDate ? firstDueDate : undefined,
       couponCode: coupon?.code,
+      cardMachineId: machine ? machine.id : undefined,
+      cashbackUse: cashbackCents > 0 ? cashbackUse : undefined,
       discount, note, items: cart.map((x) => ({ variantId: x.v.id, qty: x.qty })),
     });
     setBusy(false);
@@ -227,6 +251,37 @@ export function VendasManager({
             {couponBelowMin && coupon && <p className="mt-2 text-xs text-negative">Este cupom exige subtotal mínimo de {formatCents(coupon.minOrder)}.</p>}
           </div>
 
+          {(method === "CARTAO" || method === "DEBITO") && machines.length > 0 && (
+            <div className="grid gap-3 rounded-[var(--radius)] border border-line p-3 sm:grid-cols-2">
+              <label><span className={label}>Maquininha</span>
+                <select className="field" value={machineId} onChange={(e) => setMachineId(e.target.value)}>
+                  <option value="">— Não informar —</option>
+                  {machines.map((m) => <option key={m.id} value={m.id}>{m.name}{m.provider ? ` (${m.provider})` : ""}</option>)}
+                </select>
+              </label>
+              {machine && (
+                <div className="flex flex-col justify-end text-sm">
+                  <span className="text-muted">Taxa {machineFeePct}%{method === "CARTAO" && Number(installments) > 1 ? ` · ${installments}x` : ""}</span>
+                  <span>Você recebe líquido: <strong className="text-positive">{formatCents(netReceived)}</strong></span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {ambBalance > 0 && (
+            <div className="rounded-[var(--radius)] border border-brand/40 bg-brand/5 p-3">
+              <div className="flex items-center justify-between">
+                <span className={label + " !mb-0"}>Cashback do embaixador</span>
+                <span className="text-xs text-muted">saldo {formatCents(ambBalance)}</span>
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <input className="field py-2" value={cashbackUse} onChange={(e) => setCashbackUse(e.target.value)} placeholder="0,00" inputMode="decimal" />
+                <button type="button" onClick={() => setCashbackUse((cashbackMax / 100).toFixed(2).replace(".", ","))} className="btn btn-ghost px-3 py-2 text-xs">Usar máx.</button>
+              </div>
+              {cashbackCents > 0 && <p className="mt-1 text-xs text-brand">− {formatCents(cashbackCents)} de cashback aplicado.</p>}
+            </div>
+          )}
+
           {method === "A_PRAZO" && (
             <div className="grid gap-4 rounded-[var(--radius)] border border-orange/30 bg-orange/5 p-4 sm:grid-cols-3">
               <label><span className={label}>Entrada (R$)</span>
@@ -252,7 +307,7 @@ export function VendasManager({
             <span className={label}>Itens *</span>
             <div className="relative">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
-              <input className="field pl-9" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar produto, tamanho, cor, SKU..." />
+              <input className="field pl-9" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por produto, SKU, código do fornecedor, cor..." />
             </div>
             {search && (
               <div className="mt-2 max-h-44 overflow-y-auto rounded-[var(--radius)] border border-line">
@@ -288,7 +343,13 @@ export function VendasManager({
                 {manualDiscountCents > 0 && (
                   <div className="flex justify-between text-muted"><span>Desconto manual</span><span>− {formatCents(manualDiscountCents)}</span></div>
                 )}
+                {cashbackCents > 0 && (
+                  <div className="flex justify-between text-brand"><span>Cashback embaixador</span><span>− {formatCents(cashbackCents)}</span></div>
+                )}
                 <div className="flex justify-between border-t border-line pt-1 font-semibold"><span>Total</span><span>{formatCents(totalCents)}</span></div>
+                {machine && (
+                  <div className="flex justify-between text-xs text-muted"><span>Líquido na maquininha ({machineFeePct}%)</span><span className="text-positive">{formatCents(netReceived)}</span></div>
+                )}
               </div>
             </div>
           )}

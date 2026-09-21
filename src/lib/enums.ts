@@ -228,6 +228,7 @@ export const MODULES = [
   { id: "relatorios", label: "Relatórios" },
   { id: "notificacoes", label: "Notificações" },
   { id: "frete", label: "Frete" },
+  { id: "maquininhas", label: "Maquininhas" },
   { id: "auditoria", label: "Auditoria" },
 ] as const;
 export type ModuleId = (typeof MODULES)[number]["id"];

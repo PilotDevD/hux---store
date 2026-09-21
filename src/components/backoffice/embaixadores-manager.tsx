@@ -13,7 +13,7 @@ import { formatCents } from "@/lib/money";
 export type AmbassadorRow = {
   id: string; name: string; email: string | null; phone: string | null; code: string;
   discountPct: number; cashbackPct: number; active: boolean; notes: string | null;
-  uses: number; revenue: number; cashback: number;
+  uses: number; revenue: number; cashback: number; redeemed: number; balance: number;
 };
 
 export function EmbaixadoresManager({ ambassadors }: { ambassadors: AmbassadorRow[] }) {
@@ -45,12 +45,12 @@ export function EmbaixadoresManager({ ambassadors }: { ambassadors: AmbassadorRo
   }
   async function remove(id: string) { setRowBusy(id); await deleteAmbassadorAction(id); setRowBusy(null); toast("Removido.", "success"); router.refresh(); }
 
-  const totalCashback = ambassadors.reduce((s, a) => s + a.cashback, 0);
+  const totalBalance = ambassadors.reduce((s, a) => s + a.balance, 0);
 
   return (
     <>
       <div className="mb-6 flex items-center justify-between">
-        <p className="text-sm text-muted">Cashback total acumulado: <strong className="text-brand">{formatCents(totalCashback)}</strong></p>
+        <p className="text-sm text-muted">Saldo de cashback disponível: <strong className="text-brand">{formatCents(totalBalance)}</strong></p>
         <button onClick={openNew} className="btn btn-primary"><Plus size={16} /> Novo embaixador</button>
       </div>
 
@@ -76,10 +76,11 @@ export function EmbaixadoresManager({ ambassadors }: { ambassadors: AmbassadorRo
                   <button onClick={() => remove(a.id)} disabled={rowBusy === a.id} className="grid size-8 place-items-center text-faint hover:text-negative"><Trash2 size={14} /></button>
                 </div>
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 border-t border-line pt-3 text-center">
-                <div><p className="font-display text-xl">{a.uses}</p><p className="data-label text-faint">usos</p></div>
-                <div><p className="font-display text-xl">{formatCents(a.revenue)}</p><p className="data-label text-faint">receita</p></div>
-                <div><p className="font-display text-xl text-brand">{formatCents(a.cashback)}</p><p className="data-label text-faint">cashback</p></div>
+              <div className="mt-3 grid grid-cols-4 gap-2 border-t border-line pt-3 text-center">
+                <div><p className="font-display text-lg">{a.uses}</p><p className="data-label text-faint">usos</p></div>
+                <div><p className="font-display text-lg">{formatCents(a.cashback)}</p><p className="data-label text-faint">cashback</p></div>
+                <div><p className="font-display text-lg text-muted">{formatCents(a.redeemed)}</p><p className="data-label text-faint">usado</p></div>
+                <div><p className="font-display text-lg text-brand">{formatCents(a.balance)}</p><p className="data-label text-faint">saldo</p></div>
               </div>
             </div>
           ))}

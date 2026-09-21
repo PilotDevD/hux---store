@@ -260,6 +260,11 @@ model Order {
   soldByName     String?
   cardInstallments Int?    // number of credit-card installments (for remarketing)
   downPayment    Int      @default(0) // entrada (cents) — vendas a prazo / crediário
+  cardMachineId  String?  // maquininha usada
+  cardFeePct     Float?   // taxa aplicada (%) da maquininha
+  netReceived    Int?     // valor líquido recebido após a taxa (cents)
+  cashbackUsed   Int      @default(0) // cashback de embaixador resgatado nesta compra (cents)
+  cashbackAmbassadorId String? // embaixador dono do cashback resgatado
   remarketed     Boolean  @default(false)
   couponId       String?
   couponCode     String?
@@ -655,6 +660,22 @@ model Ambassador {
   createdAt   DateTime @default(now())
 
   coupon Coupon? @relation(fields: [couponId], references: [id], onDelete: SetNull)
+}
+
+// ----------------------------- Maquininhas (card machines) ------------------
+// Cadastro das maquininhas com taxas por forma de pagamento e nº de parcelas.
+// `installmentFees` é JSON [{n:2,pct:4.5},...] para o crédito parcelado.
+model CardMachine {
+  id              String   @id @default(cuid())
+  name            String   // apelido (ex.: "Stone loja", "PagBank")
+  provider        String?  // adquirente (Cielo, Stone, PagBank...)
+  debitFee        Float    @default(0) // % no débito
+  creditFee       Float    @default(0) // % no crédito à vista (1x)
+  pixFee          Float    @default(0) // % no Pix pela maquininha (se usar)
+  installmentFees String   @default("[]") // JSON [{n,pct}] por nº de parcelas
+  notes           String?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
 }
 
 // ----------------------------- Uploads (imagens no banco) -------------------

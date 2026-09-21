@@ -7,8 +7,10 @@ import { requireModule } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { computePrice, getActivePromotions } from "@/lib/pricing";
 import { validateCoupon } from "@/lib/coupon";
+import { ambassadorByEmail, ambassadorBalance } from "@/lib/cashback";
+import { feeForSale, netAfterFee, type InstallmentFee } from "@/lib/card-machine-fee";
 import { parseReaisToCents, formatCents } from "@/lib/money";
-import { onlyDigits } from "@/lib/utils";
+import { onlyDigits, parseJson } from "@/lib/utils";
 import { MANUAL_PAYMENT_METHODS } from "@/lib/enums";
 
 /** Validate a coupon for a physical sale (no customer, no shipping). */
@@ -57,6 +59,8 @@ const schema = z.object({
   cardInstallments: z.coerce.number().int().min(1).max(12).optional(),
   discount: z.string().optional(),
   couponCode: z.string().optional(),
+  cardMachineId: z.string().optional(),
+  cashbackUse: z.string().optional(),
   note: z.string().optional(),
   // Vendas a prazo (crediário)
   downPayment: z.string().optional(),
@@ -118,7 +122,35 @@ export async function createManualSaleAction(input: z.input<typeof schema>): Pro
 
   const manualDiscount = d.discount ? parseReaisToCents(d.discount) : 0;
   const discountTotal = Math.min(subtotal, couponDiscount + manualDiscount);
-  const total = subtotal - discountTotal;
+  let total = subtotal - discountTotal;
+
+  // --- cashback de embaixador (resgate) ---
+  let cashbackApplied = 0;
+  let cashbackAmbassadorId: string | null = null;
+  if (d.cashbackUse && snapEmail) {
+    const amb = await ambassadorByEmail(snapEmail);
+    if (amb) {
+      const balance = await ambassadorBalance(amb);
+      cashbackApplied = Math.max(0, Math.min(parseReaisToCents(d.cashbackUse), balance, total));
+      if (cashbackApplied > 0) cashbackAmbassadorId = amb.id;
+    }
+  }
+  total = total - cashbackApplied;
+
+  // --- maquininha: taxa + líquido ---
+  let cardMachineId: string | null = null;
+  let cardFeePct: number | null = null;
+  let netReceived: number | null = null;
+  if (d.cardMachineId) {
+    const m = await db.cardMachine.findUnique({ where: { id: d.cardMachineId } });
+    if (m && m.active) {
+      const opt = { id: m.id, name: m.name, provider: m.provider, debitFee: m.debitFee, creditFee: m.creditFee, pixFee: m.pixFee, installmentFees: parseJson<InstallmentFee[]>(m.installmentFees, []) };
+      cardFeePct = feeForSale(opt, d.paymentMethod, d.paymentMethod === "CARTAO" ? (d.cardInstallments ?? 1) : 1);
+      netReceived = netAfterFee(total, cardFeePct);
+      cardMachineId = m.id;
+    }
+  }
+
   const costTotal = lines.reduce((s, l) => s + l.unitCost * l.qty, 0);
   const number = manualOrderNumber();
 
@@ -165,6 +197,8 @@ export async function createManualSaleAction(input: z.input<typeof schema>): Pro
           cardInstallments: d.paymentMethod === "CARTAO" ? (d.cardInstallments ?? 1) : null,
           downPayment: isAprazo ? entrada : 0,
           couponId, couponCode,
+          cashbackUsed: cashbackApplied, cashbackAmbassadorId,
+          cardMachineId, cardFeePct, netReceived,
           subtotal, discountTotal, shippingTotal: 0, total, costTotal,
           shippingLabel: "Venda física / balcão", addressSnapshot: "{}",
           customerSnapshot: JSON.stringify({ name: snapName, email: snapEmail, phone: snapPhone }),

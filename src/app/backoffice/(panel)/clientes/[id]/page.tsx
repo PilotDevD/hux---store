@@ -8,7 +8,7 @@ import { formatCents } from "@/lib/money";
 import { formatDate, onlyDigits, initials } from "@/lib/utils";
 import { PRODUCT_TYPE_LABELS } from "@/lib/enums";
 import { PageHeader, StatCard } from "@/components/backoffice/bo-ui";
-import { OrderStatusBadge, Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge";
 import { ClienteFormButton } from "@/components/backoffice/cliente-form-button";
 
 export const metadata: Metadata = { title: "Cliente" };
@@ -80,18 +80,23 @@ export default async function ClienteDetail({ params }: { params: Promise<{ id: 
         <p className="card p-8 text-center text-sm text-muted">Nenhum pedido ainda.</p>
       ) : (
         <div className="card divide-y divide-line">
-          {customer.orders.map((o) => (
-            <Link key={o.number} href={`/backoffice/pedidos/${o.number}`} className="flex items-center justify-between gap-3 px-5 py-3.5 transition-colors hover:bg-elevated">
-              <div>
-                <p className="font-mono text-sm font-semibold">{o.number}</p>
-                <p className="text-xs text-muted">{formatDate(o.createdAt)} · {o.items.length} itens</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <OrderStatusBadge status={o.status} />
-                <span className="hidden font-semibold sm:block">{formatCents(o.total)}</span>
-              </div>
-            </Link>
-          ))}
+          {customer.orders.map((o) => {
+            const payTone = o.paymentStatus === "CONFIRMADO" ? "success" : o.paymentStatus === "ESTORNADO" ? "danger" : "warning";
+            const payLabel = o.paymentStatus === "CONFIRMADO" ? "Pago" : o.paymentStatus === "ESTORNADO" ? "Estornado" : "Pendente";
+            const isAprazo = o.paymentMethod === "A_PRAZO";
+            return (
+              <Link key={o.number} href={`/backoffice/pedidos/${o.number}`} className="flex items-center justify-between gap-3 px-5 py-3.5 transition-colors hover:bg-elevated">
+                <div>
+                  <p className="font-mono text-sm font-semibold">{o.number}</p>
+                  <p className="text-xs text-muted">{formatDate(o.createdAt)} · {o.items.length} itens{isAprazo ? " · a prazo" : ""}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Badge tone={payTone}>{payLabel}</Badge>
+                  <span className="hidden font-semibold sm:block">{formatCents(o.total)}</span>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       )}
 

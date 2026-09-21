@@ -6,6 +6,7 @@ import { computeShipping } from "./shipping";
 import { validateCoupon } from "./coupon";
 import { buildPixPayload } from "./pix";
 import { buildInstallments } from "./boleto";
+import { ambassadorByEmail, ambassadorBalance } from "./cashback";
 import { ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS, type OrderStatus } from "./enums";
 
 const CART_COOKIE = "hux_cart";
@@ -22,6 +23,7 @@ export type CreateOrderInput = {
   note?: string | null;
   paymentMethod?: "PIX_MANUAL" | "BOLETO";
   boletoParcelas?: number; // 1-3, only for BOLETO
+  cashbackUseCents?: number; // ambassador cashback redeemed
 };
 
 export type CreateOrderResult =
@@ -107,7 +109,20 @@ export async function createOrder(
   }
 
   const shippingTotal = freeShipping ? 0 : quote.price;
-  const total = Math.max(0, subtotal - discountTotal) + shippingTotal;
+
+  // Ambassador cashback redemption.
+  let cashbackApplied = 0;
+  let cashbackAmbassadorId: string | null = null;
+  if (input.cashbackUseCents && input.cashbackUseCents > 0) {
+    const amb = await ambassadorByEmail(customer.email);
+    if (amb) {
+      const bal = await ambassadorBalance(amb);
+      cashbackApplied = Math.max(0, Math.min(input.cashbackUseCents, bal, Math.max(0, subtotal - discountTotal)));
+      if (cashbackApplied > 0) cashbackAmbassadorId = amb.id;
+    }
+  }
+
+  const total = Math.max(0, subtotal - discountTotal - cashbackApplied) + shippingTotal;
 
   const number = orderNumber();
   const method = input.paymentMethod === "BOLETO" ? "BOLETO" : "PIX_MANUAL";
@@ -169,6 +184,8 @@ export async function createOrder(
           costTotal,
           couponId,
           couponCode,
+          cashbackUsed: cashbackApplied,
+          cashbackAmbassadorId,
           shippingLabel: quote.label,
           shippingEtaDays: quote.etaDays,
           addressSnapshot,

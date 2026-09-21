@@ -46,12 +46,14 @@ export function CheckoutClient({
   const [note, setNote] = useState("");
   const [payMethod, setPayMethod] = useState<"PIX_MANUAL" | "BOLETO">("PIX_MANUAL");
   const [parcelas, setParcelas] = useState(1);
+  const [useCashback, setUseCashback] = useState(false);
+  const cashbackUseCents = useCashback ? 100_000_000 : 0; // server clamps to real balance
 
-  // Recompute summary whenever address or applied coupon changes.
+  // Recompute summary whenever address, coupon or cashback choice changes.
   useEffect(() => {
     let alive = true;
     setLoadingSummary(true);
-    getCheckoutSummary(selectedId, appliedCoupon).then((s) => {
+    getCheckoutSummary(selectedId, appliedCoupon, cashbackUseCents).then((s) => {
       if (!alive) return;
       setSummary(s);
       setLoadingSummary(false);
@@ -63,7 +65,7 @@ export function CheckoutClient({
     return () => {
       alive = false;
     };
-  }, [selectedId, appliedCoupon, toast]);
+  }, [selectedId, appliedCoupon, cashbackUseCents, toast]);
 
   function applyCoupon() {
     if (!couponInput.trim()) return;
@@ -86,6 +88,7 @@ export function CheckoutClient({
       note,
       paymentMethod: payMethod,
       boletoParcelas: payMethod === "BOLETO" ? parcelas : undefined,
+      cashbackUseCents,
     });
     if (res.ok && res.number) {
       router.push(`/checkout/sucesso/${res.number}`);
@@ -307,11 +310,24 @@ export function CheckoutClient({
               )}
             </div>
 
+            {/* Cashback (embaixador) */}
+            {summary && summary.cashbackBalance > 0 && (
+              <div className="border-b border-line px-5 py-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={useCashback} onChange={(e) => setUseCashback(e.target.checked)} className="size-4 accent-orange" />
+                  Usar meu cashback <span className="text-muted">(saldo {formatCents(summary.cashbackBalance)})</span>
+                </label>
+              </div>
+            )}
+
             {/* Totals */}
             <div className="space-y-2.5 px-5 py-4 text-sm">
               <Row label="Subtotal" value={formatCents(cart.subtotal)} />
               {summary && summary.discountTotal > 0 && (
                 <Row label="Desconto" value={`- ${formatCents(summary.discountTotal)}`} tone="positive" />
+              )}
+              {summary && summary.cashbackApplied > 0 && (
+                <Row label="Cashback" value={`- ${formatCents(summary.cashbackApplied)}`} tone="positive" />
               )}
               <Row
                 label={summary?.shipping ? `Frete · ${summary.shipping.name}` : "Frete"}

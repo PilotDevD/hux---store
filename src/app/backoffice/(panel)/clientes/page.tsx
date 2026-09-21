@@ -19,6 +19,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
   await guardModule("clientes");
   const sp = await searchParams;
   const q = first(sp.q)?.trim();
+  const sort = first(sp.ordenar) ?? "nome";
   const where: Prisma.CustomerWhereInput = q
     ? { OR: [
         { name: { contains: q, mode: "insensitive" } },
@@ -47,10 +48,32 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
   const totalSpent = rows.reduce((s, r) => s + r.spent, 0);
   const withOrders = rows.filter((r) => r.orderCount > 0).length;
 
+  // Sorting (default: alphabetical).
+  rows.sort((a, b) => {
+    switch (sort) {
+      case "recentes": return +b.createdAt - +a.createdAt;
+      case "antigos": return +a.createdAt - +b.createdAt;
+      case "gasto": return b.spent - a.spent;
+      case "pedidos": return b.orderCount - a.orderCount;
+      default: return a.name.localeCompare(b.name, "pt-BR");
+    }
+  });
+
   return (
     <>
       <PageHeader eyebrow="Relacionamento" title="Clientes" subtitle={`${rows.length} cadastrados`} action={<ClienteFormButton />} />
-      <BoFilterBar searchPlaceholder="Buscar por nome, e-mail ou telefone…" />
+      <BoFilterBar
+        searchPlaceholder="Buscar por nome, e-mail ou telefone…"
+        selects={[
+          { param: "ordenar", label: "Ordenar: A–Z", options: [
+            { value: "nome", label: "Nome (A–Z)" },
+            { value: "recentes", label: "Mais recentes" },
+            { value: "antigos", label: "Mais antigos" },
+            { value: "gasto", label: "Maior gasto" },
+            { value: "pedidos", label: "Mais pedidos" },
+          ] },
+        ]}
+      />
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <StatCard label="Clientes" value={String(rows.length)} icon={Users} />
         <StatCard label="Compraram" value={String(withOrders)} icon={Users} tone="positive" />

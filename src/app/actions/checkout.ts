@@ -7,6 +7,7 @@ import { requireCustomer } from "@/lib/auth";
 import { getCartDetailed } from "@/lib/cart";
 import { computeShipping, type ShippingQuote } from "@/lib/shipping";
 import { validateCoupon } from "@/lib/coupon";
+import { ambassadorByEmail, ambassadorBalance } from "@/lib/cashback";
 import { createOrder } from "@/lib/orders";
 import { onlyDigits } from "@/lib/utils";
 import { UFS } from "@/lib/enums";
@@ -81,12 +82,15 @@ export type CheckoutSummary = {
   couponCode: string | null;
   couponError: string | null;
   couponDescription: string | null;
+  cashbackBalance: number;
+  cashbackApplied: number;
   total: number;
 };
 
 export async function getCheckoutSummary(
   addressId: string | null,
   couponCode: string | null,
+  cashbackUseCents = 0,
 ): Promise<CheckoutSummary> {
   const customer = await requireCustomer();
   const cart = await getCartDetailed(customer.id);
@@ -94,7 +98,8 @@ export async function getCheckoutSummary(
   if (cart.count === 0) {
     return {
       empty: true, count: 0, subtotal: 0, shipping: null, discountTotal: 0,
-      freeShipping: false, couponCode: null, couponError: null, couponDescription: null, total: 0,
+      freeShipping: false, couponCode: null, couponError: null, couponDescription: null,
+      cashbackBalance: 0, cashbackApplied: 0, total: 0,
     };
   }
 
@@ -122,8 +127,17 @@ export async function getCheckoutSummary(
     }
   }
 
+  // Ambassador cashback (redeem own balance).
+  let cashbackBalance = 0;
+  let cashbackApplied = 0;
+  const amb = await ambassadorByEmail(customer.email);
+  if (amb) {
+    cashbackBalance = await ambassadorBalance(amb);
+    cashbackApplied = Math.max(0, Math.min(cashbackUseCents, cashbackBalance, Math.max(0, cart.subtotal - discountTotal)));
+  }
+
   const shippingCost = shipping ? (freeShipping ? 0 : shipping.price) : 0;
-  const total = Math.max(0, cart.subtotal - discountTotal) + shippingCost;
+  const total = Math.max(0, cart.subtotal - discountTotal - cashbackApplied) + shippingCost;
 
   return {
     empty: false,
@@ -135,6 +149,8 @@ export async function getCheckoutSummary(
     couponCode: appliedCode,
     couponError,
     couponDescription,
+    cashbackBalance,
+    cashbackApplied,
     total,
   };
 }
@@ -209,6 +225,7 @@ export async function placeOrderAction(input: {
   note?: string | null;
   paymentMethod?: "PIX_MANUAL" | "BOLETO";
   boletoParcelas?: number;
+  cashbackUseCents?: number;
 }): Promise<{ ok: boolean; error?: string; number?: string }> {
   const customer = await requireCustomer();
   const res = await createOrder(customer.id, input);

@@ -5,6 +5,7 @@ import { formatCents } from "@/lib/money";
 import { PRODUCT_TYPE_LABELS, EXPENSE_CATEGORY_LABELS, type ProductType } from "@/lib/enums";
 import { PageHeader, StatCard } from "@/components/backoffice/bo-ui";
 import { BoFilterBar } from "@/components/backoffice/bo-filter-bar";
+import { ExportReportButton, type ReportSection } from "@/components/backoffice/export-report-button";
 import { ShoppingCart, Wallet, Store, Globe, Megaphone, Users, TrendingUp } from "lucide-react";
 import type { Prisma } from "@prisma/client";
 
@@ -141,12 +142,31 @@ export default async function RelatoriosPage({ searchParams }: { searchParams: P
 
   const fmtDay = (d: Date) => d.toLocaleDateString("pt-BR");
 
+  const sections: ReportSection[] = [
+    { title: "Resumo de vendas", headers: ["Métrica", "Valor"], rows: [
+      ["Vendas (período)", orders.length],
+      ["Receita bruta", formatCents(revenue)],
+      ["Receita em produtos", formatCents(goodsNet)],
+      ["Vendas físicas", manualOrders.length],
+      ["Vendas online", onlineOrders.length],
+      ["Ticket médio", formatCents(ticket)],
+      ["Itens vendidos", totalItems],
+    ] },
+    { title: "Produtos vendidos por categoria", headers: ["Categoria", "Qtd", "Receita"], rows: byCategory.map((r) => [r.label, r.qty, formatCents(r.revenue)]) },
+    { title: "Vendas por marca", headers: ["Marca", "Qtd", "Receita"], rows: byBrand.map((r) => [r.label, r.qty, formatCents(r.revenue)]) },
+    { title: "Produtos mais vendidos", headers: ["Produto", "Qtd", "Receita"], rows: topProducts.map((r) => [r.label, r.qty, formatCents(r.revenue)]) },
+    { title: "Despesas por categoria", headers: ["Categoria", "Valor"], rows: expenseRows.map((r) => [r.label, formatCents(r.amount)]) },
+    { title: "Comissões dos vendedores", headers: ["Vendedor", "Vendas", "Receita", "%", "Comissão"], rows: sellerRows.map((r) => [r.name, r.count, formatCents(r.net), `${r.pct}%`, formatCents(r.commission)]) },
+    { title: "Embaixadores (cashback)", headers: ["Embaixador", "Cupom", "Usos", "Receita gerada", "%", "Cashback"], rows: ambRows.map((r) => [r.name, r.code, r.count, formatCents(r.net), `${r.pct}%`, formatCents(r.cashback)]) },
+  ];
+
   return (
     <>
       <PageHeader
         eyebrow="Análise"
         title="Relatórios"
         subtitle={`Período: ${fmtDay(de)} — ${fmtDay(ate)}. Ajuste as datas para outro intervalo.`}
+        action={<ExportReportButton title={`Relatório HUX — ${fmtDay(de)} a ${fmtDay(ate)}`} filename={`relatorio-hux-${deStr ?? "inicio"}_${ateStr ?? "hoje"}.xls`} sections={sections} />}
       />
 
       <BoFilterBar dateRange searchPlaceholder="—" />
