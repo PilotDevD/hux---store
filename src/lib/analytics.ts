@@ -17,10 +17,16 @@ function pctDelta(current: number, previous: number): { value: number; positive:
 
 export type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
 
-export async function getDashboardData() {
+export type DashboardRange = { start: Date; end: Date };
+
+export async function getDashboardData(range?: DashboardRange) {
   const now = new Date();
-  const monthStart = startOfMonth(now);
-  const lastMonthStart = startOfMonth(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+  const periodStart = range?.start ?? startOfMonth(now);
+  const periodEnd = range?.end ?? now;
+  // Previous period of the same length, for the deltas.
+  const spanMs = Math.max(1, periodEnd.getTime() - periodStart.getTime());
+  const prevStart = new Date(periodStart.getTime() - spanMs);
+  const prevEnd = periodStart;
   const todayStart = startOfDay(now);
 
   const [paidOrders, awaiting, variants, recentOrders, pendingProdCount, customersCount] =
@@ -46,9 +52,9 @@ export async function getDashboardData() {
       db.customer.count(),
     ]);
 
-  // --- revenue / profit (month vs last month) ---
-  let monthRevenue = 0, monthProfit = 0, lastRevenue = 0, lastProfit = 0;
-  let todayCount = 0, todayTotal = 0;
+  // --- revenue / profit (selected period vs previous equal span) ---
+  let periodRevenue = 0, periodProfit = 0, lastRevenue = 0, lastProfit = 0;
+  let periodCount = 0, periodTotal = 0;
   let onlineCount = 0, onlineRevenue = 0, manualCount = 0, manualRevenue = 0;
   const brandRevenue: Record<string, number> = {};
   const productQty: Record<string, { name: string; brand: string; qty: number; revenue: number }> = {};
@@ -69,9 +75,11 @@ export async function getDashboardData() {
     const profit = net - o.costTotal;
     const created = new Date(o.paidAt ?? o.createdAt);
 
-    if (created >= monthStart) {
-      monthRevenue += net;
-      monthProfit += profit;
+    if (created >= periodStart && created <= periodEnd) {
+      periodRevenue += net;
+      periodProfit += profit;
+      periodCount += 1;
+      periodTotal += o.total;
       if (o.channel === "MANUAL") { manualCount++; manualRevenue += net; }
       else { onlineCount++; onlineRevenue += net; }
       for (const it of o.items) {
@@ -81,17 +89,12 @@ export async function getDashboardData() {
         productQty[k].qty += it.qty;
         productQty[k].revenue += it.lineTotal;
       }
-    } else if (created >= lastMonthStart && created < monthStart) {
+    } else if (created >= prevStart && created < prevEnd) {
       lastRevenue += net;
       lastProfit += profit;
     }
 
-    if (created >= todayStart) {
-      todayCount += 1;
-      todayTotal += o.total;
-    }
-
-    // 7-day series
+    // 7-day series (always the last 7 days, independent of the filter)
     const key = `${created.getMonth() + 1}/${created.getDate()}`;
     if (key in dayBuckets) dayBuckets[key] += net;
   }
@@ -121,12 +124,12 @@ export async function getDashboardData() {
   const awaitingTotal = awaiting.reduce((s, o) => s + o.total, 0);
 
   return {
-    monthRevenue,
-    monthProfit,
-    revenueDelta: pctDelta(monthRevenue, lastRevenue),
-    profitDelta: pctDelta(monthProfit, lastProfit),
-    todayCount,
-    todayTotal,
+    periodRevenue,
+    periodProfit,
+    revenueDelta: pctDelta(periodRevenue, lastRevenue),
+    profitDelta: pctDelta(periodProfit, lastProfit),
+    periodCount,
+    periodTotal,
     onlineCount,
     onlineRevenue,
     manualCount,

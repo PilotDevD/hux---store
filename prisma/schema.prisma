@@ -662,6 +662,20 @@ model Ambassador {
   coupon Coupon? @relation(fields: [couponId], references: [id], onDelete: SetNull)
 }
 
+// ----------------------------- Caixa (dinheiro em espécie) -------------------
+// Lançamentos manuais de entrada/saída de dinheiro em espécie no caixa da loja.
+model CashEntry {
+  id        String   @id @default(cuid())
+  kind      String   // ENTRADA | SAIDA
+  amount    Int      // cents (sempre positivo)
+  note      String?
+  userId    String?
+  userName  String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 // ----------------------------- Maquininhas (card machines) ------------------
 // Cadastro das maquininhas com taxas por forma de pagamento e nº de parcelas.
 // `installmentFees` é JSON [{n:2,pct:4.5},...] para o crédito parcelado.

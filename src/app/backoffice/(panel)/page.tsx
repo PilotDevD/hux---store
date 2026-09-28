@@ -5,37 +5,96 @@ import {
   Clock, PackageCheck, Users,
 } from "lucide-react";
 import { guardModule } from "@/lib/bo-guard";
+import { db } from "@/lib/db";
 import { getDashboardData } from "@/lib/analytics";
 import { getAlerts } from "@/lib/alerts";
 import { formatCents } from "@/lib/money";
 import { formatDate } from "@/lib/utils";
 import { BRAND_INFO, type Brand } from "@/lib/enums";
 import { PageHeader, StatCard, SectionTitle } from "@/components/backoffice/bo-ui";
+import { BoFilterBar } from "@/components/backoffice/bo-filter-bar";
 import { RevenueChart } from "@/components/backoffice/revenue-chart";
+import { CaixaCard, type CashRow } from "@/components/backoffice/caixa-card";
 import { OrderStatusBadge } from "@/components/ui/badge";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
-export default async function DashboardPage() {
+type SP = Record<string, string | string[] | undefined>;
+const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+function resolveRange(periodo: string, de?: string, ate?: string): { start: Date; end: Date; label: string } {
+  const now = new Date();
+  if (de || ate) {
+    const start = de ? new Date(`${de}T00:00:00`) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = ate ? new Date(`${ate}T23:59:59`) : now;
+    return { start, end, label: "Período personalizado" };
+  }
+  if (periodo === "dia") return { start: startOfDay(now), end: now, label: "Hoje" };
+  if (periodo === "semana") {
+    const dow = (now.getDay() + 6) % 7; // segunda = 0
+    const start = startOfDay(now);
+    start.setDate(start.getDate() - dow);
+    return { start, end: now, label: "Esta semana" };
+  }
+  return { start: new Date(now.getFullYear(), now.getMonth(), 1), end: now, label: "Este mês" };
+}
+
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<SP> }) {
   const staff = await guardModule("dashboard");
-  const d = await getDashboardData();
-  const alerts = await getAlerts();
+  const sp = await searchParams;
+  const periodo = first(sp.periodo) ?? "mes";
+  const range = resolveRange(periodo, first(sp.de), first(sp.ate));
+
+  const [d, alerts, cashEntries] = await Promise.all([
+    getDashboardData({ start: range.start, end: range.end }),
+    getAlerts(),
+    db.cashEntry.findMany({ orderBy: { createdAt: "desc" }, take: 100 }),
+  ]);
   const maxBrand = Math.max(1, ...d.brandRevenue.map((b) => b.revenue));
+
+  // Caixa em espécie
+  const cashBalance = cashEntries.reduce((s, e) => s + (e.kind === "ENTRADA" ? e.amount : -e.amount), 0);
+  const cashRows: CashRow[] = cashEntries.slice(0, 20).map((e) => ({
+    id: e.id, kind: e.kind, amount: e.amount, note: e.note, userName: e.userName, createdAt: e.createdAt.toISOString(),
+  }));
+  const todayStart = startOfDay(new Date());
+  const cashSalesToday = (await db.order.findMany({
+    where: { channel: "MANUAL", paymentMethod: "DINHEIRO", paymentStatus: "CONFIRMADO", createdAt: { gte: todayStart } },
+    select: { total: true },
+  })).reduce((s, o) => s + o.total, 0);
 
   return (
     <>
       <PageHeader
         eyebrow={`Bem-vindo, ${staff.displayName.split(" ")[0]}`}
         title="Dashboard"
-        subtitle="Visão geral do mês corrente e alertas operacionais."
+        subtitle={`Visão do período: ${range.label.toLowerCase()}. Ajuste o filtro abaixo.`}
+      />
+
+      <BoFilterBar
+        noSearch
+        dateRange
+        selects={[
+          { param: "periodo", label: "Período: mês", options: [
+            { value: "dia", label: "Hoje" },
+            { value: "semana", label: "Esta semana" },
+            { value: "mes", label: "Este mês" },
+          ] },
+        ]}
       />
 
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Faturamento do mês" value={formatCents(d.monthRevenue)} icon={Wallet} delta={d.revenueDelta} hint="vs mês anterior" />
-        <StatCard label="Lucro do mês" value={formatCents(d.monthProfit)} icon={TrendingUp} tone="positive" delta={d.profitDelta} hint="margem de produto" />
-        <StatCard label="Vendas hoje" value={String(d.todayCount)} icon={ShoppingCart} tone="info" hint={formatCents(d.todayTotal)} />
+        <StatCard label="Faturamento do período" value={formatCents(d.periodRevenue)} icon={Wallet} delta={d.revenueDelta} hint="vs período anterior" />
+        <StatCard label="Lucro do período" value={formatCents(d.periodProfit)} icon={TrendingUp} tone="positive" delta={d.profitDelta} hint="margem de produto" />
+        <StatCard label="Vendas no período" value={String(d.periodCount)} icon={ShoppingCart} tone="info" hint={formatCents(d.periodTotal)} />
         <StatCard label="Estoque (custo)" value={formatCents(d.stockCostValue)} icon={Boxes} hint={`${d.stockUnits} unidades`} />
+      </div>
+
+      {/* Caixa em espécie */}
+      <div className="mt-4">
+        <CaixaCard balance={cashBalance} entries={cashRows} cashSalesToday={cashSalesToday} />
       </div>
 
       {/* Alert row */}
@@ -100,7 +159,7 @@ export default async function DashboardPage() {
 
       {/* Sales channel split */}
       <div className="mt-6 card p-6">
-        <SectionTitle>Vendas do mês · físico × online</SectionTitle>
+        <SectionTitle>Vendas do período · físico × online</SectionTitle>
         {(() => {
           const totalRev = Math.max(1, d.manualRevenue + d.onlineRevenue);
           const rows = [
@@ -137,7 +196,7 @@ export default async function DashboardPage() {
 
         {/* Revenue by brand */}
         <div className="card p-6">
-          <SectionTitle>Receita por marca (mês)</SectionTitle>
+          <SectionTitle>Receita por marca (período)</SectionTitle>
           {d.brandRevenue.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted">Sem vendas pagas neste mês ainda.</p>
           ) : (
