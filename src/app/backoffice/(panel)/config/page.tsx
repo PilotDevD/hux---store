@@ -19,6 +19,7 @@ export default async function ConfigPage() {
   const rows: UserRow[] = users.map((u) => ({
     id: u.id, username: u.username, displayName: u.displayName, role: u.role,
     commissionPct: u.commissionPct, permissions: parseJson<string[]>(u.permissions, []), active: u.active,
+    onlyOwnSales: u.onlyOwnSales,
   }));
 
   const store = parseJson<{ freeShippingThreshold?: number; supportEmail?: string; supportPhone?: string; pixKey?: string }>(

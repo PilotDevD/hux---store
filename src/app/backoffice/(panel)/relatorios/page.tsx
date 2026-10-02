@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { guardModule } from "@/lib/bo-guard";
 import { formatCents } from "@/lib/money";
@@ -51,7 +52,9 @@ function RankTable({ rows, unitLabel = "un" }: { rows: { label: string; qty: num
 }
 
 export default async function RelatoriosPage({ searchParams }: { searchParams: Promise<SP> }) {
-  await guardModule("relatorios");
+  const staff = await guardModule("relatorios");
+  // Relatórios é visão gerencial completa — vendedor restrito não acessa.
+  if (staff.onlyOwnSales) redirect("/backoffice");
   const sp = await searchParams;
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);

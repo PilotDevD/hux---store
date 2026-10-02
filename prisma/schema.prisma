@@ -29,6 +29,7 @@ model User {
   role         String   @default("VENDEDOR") // ADMIN | GERENTE | VENDEDOR
   permissions  String   @default("[]") // JSON string[] of module ids (vendedor)
   commissionPct Float   @default(0)
+  onlyOwnSales Boolean  @default(false) // vendedor vê/filtra apenas as próprias vendas
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

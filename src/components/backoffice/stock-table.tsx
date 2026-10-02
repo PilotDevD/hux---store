@@ -2,10 +2,11 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Minus, Loader2, SlidersHorizontal, Search, X, Check } from "lucide-react";
-import { adjustStockAction } from "@/app/actions/backoffice-catalog";
+import { Plus, Minus, Loader2, SlidersHorizontal, Search, X, Check, History } from "lucide-react";
+import { adjustStockAction, getVariantMovementsAction, type VariantMovement } from "@/app/actions/backoffice-catalog";
+import { Modal } from "./modal";
 import { useToast } from "@/components/ui/toast";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { PRODUCT_TYPE_LABELS, SIZE_LABELS } from "@/lib/enums";
 
 export type StockRow = {
@@ -80,6 +81,15 @@ function CheckGroup({ title, options, selected, onToggle }: {
 export function StockTable({ rows }: { rows: StockRow[] }) {
   const [q, setQ] = useState("");
   const [panelOpen, setPanelOpen] = useState(false);
+  const [histRow, setHistRow] = useState<StockRow | null>(null);
+  const [movs, setMovs] = useState<VariantMovement[] | null>(null);
+
+  async function openHistory(row: StockRow) {
+    setHistRow(row);
+    setMovs(null);
+    const data = await getVariantMovementsAction(row.variantId);
+    setMovs(data);
+  }
   const [pending, setPending] = useState<Filters>(emptyFilters);
   const [applied, setApplied] = useState<Filters>(emptyFilters);
 
@@ -155,12 +165,50 @@ export function StockTable({ rows }: { rows: StockRow[] }) {
               <span className="hidden font-mono text-xs text-muted md:block">{r.sku}</span>
               <span className="hidden text-sm text-ink-soft md:block">{r.color} · {r.size}</span>
               <span className={cn("font-mono text-sm font-bold", r.stock === 0 ? "text-negative" : r.stock <= 3 ? "text-warning" : "text-ink")}>{r.stock} un</span>
-              <RowAdjust row={r} />
+              <div className="flex items-center gap-1.5">
+                <RowAdjust row={r} />
+                <button onClick={() => openHistory(r)} className="grid size-8 place-items-center rounded-[var(--radius)] border border-line text-faint hover:text-orange" aria-label="Histórico de movimentações" title="Histórico de movimentações">
+                  <History size={15} />
+                </button>
+              </div>
             </div>
           ))}
           {filtered.length === 0 && <p className="p-8 text-center text-sm text-muted">Nada encontrado.</p>}
         </div>
       </div>
+
+      <Modal open={!!histRow} onClose={() => setHistRow(null)} title="Histórico de estoque" wide>
+        {histRow && (
+          <div className="space-y-3">
+            <div>
+              <p className="font-semibold">{histRow.productName}</p>
+              <p className="font-mono text-xs text-muted">{histRow.brand} · {histRow.color} · {histRow.size} · {histRow.sku} · estoque atual: {histRow.stock}</p>
+            </div>
+            {movs === null ? (
+              <p className="flex items-center gap-2 py-6 text-sm text-muted"><Loader2 size={15} className="animate-spin" /> Carregando…</p>
+            ) : movs.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted">Nenhuma movimentação registrada.</p>
+            ) : (
+              <div className="max-h-[55vh] divide-y divide-line overflow-y-auto rounded-[var(--radius)] border border-line">
+                {movs.map((m) => (
+                  <div key={m.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                    <span className={cn("grid size-6 shrink-0 place-items-center rounded-full", m.type === "ENTRADA" ? "bg-positive/10 text-positive" : "bg-negative/10 text-negative")}>
+                      {m.type === "ENTRADA" ? <Plus size={13} /> : <Minus size={13} />}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate">{m.reason}</p>
+                      <p className="text-xs text-faint">{formatDate(m.createdAt)}{m.user ? ` · ${m.user}` : " · sistema"}</p>
+                    </div>
+                    <span className={cn("shrink-0 font-mono font-semibold", m.type === "ENTRADA" ? "text-positive" : "text-negative")}>
+                      {m.type === "ENTRADA" ? "+" : "−"}{m.qty}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
     </>
   );
 }

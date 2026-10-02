@@ -46,8 +46,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const periodo = first(sp.periodo) ?? "mes";
   const range = resolveRange(periodo, first(sp.de), first(sp.ate));
 
+  const restricted = staff.onlyOwnSales; // vendedor restrito: só vê os próprios números
   const [d, alerts, cashEntries] = await Promise.all([
-    getDashboardData({ start: range.start, end: range.end }),
+    getDashboardData({ start: range.start, end: range.end }, { sellerId: restricted ? staff.id : undefined }),
     getAlerts(),
     db.cashEntry.findMany({ orderBy: { createdAt: "desc" }, take: 100 }),
   ]);
@@ -85,19 +86,29 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       />
 
       {/* KPIs */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Faturamento do período" value={formatCents(d.periodRevenue)} icon={Wallet} delta={d.revenueDelta} hint="vs período anterior" />
-        <StatCard label="Lucro do período" value={formatCents(d.periodProfit)} icon={TrendingUp} tone="positive" delta={d.profitDelta} hint="margem de produto" />
-        <StatCard label="Vendas no período" value={String(d.periodCount)} icon={ShoppingCart} tone="info" hint={formatCents(d.periodTotal)} />
-        <StatCard label="Estoque (custo)" value={formatCents(d.stockCostValue)} icon={Boxes} hint={`${d.stockUnits} unidades`} />
-      </div>
+      {restricted ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <StatCard label="Meu faturamento (período)" value={formatCents(d.periodRevenue)} icon={Wallet} tone="positive" />
+          <StatCard label="Minhas vendas (período)" value={String(d.periodCount)} icon={ShoppingCart} tone="info" hint={formatCents(d.periodTotal)} />
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard label="Faturamento do período" value={formatCents(d.periodRevenue)} icon={Wallet} delta={d.revenueDelta} hint="vs período anterior" />
+          <StatCard label="Lucro do período" value={formatCents(d.periodProfit)} icon={TrendingUp} tone="positive" delta={d.profitDelta} hint="margem de produto" />
+          <StatCard label="Vendas no período" value={String(d.periodCount)} icon={ShoppingCart} tone="info" hint={formatCents(d.periodTotal)} />
+          <StatCard label="Estoque (custo)" value={formatCents(d.stockCostValue)} icon={Boxes} hint={`${d.stockUnits} unidades`} />
+        </div>
+      )}
 
-      {/* Caixa em espécie */}
+      {/* Owner-only blocks (hidden for restricted sellers) */}
+      {!restricted && (
       <div className="mt-4">
         <CaixaCard balance={cashBalance} entries={cashRows} cashSalesToday={cashSalesToday} />
       </div>
+      )}
 
       {/* Alert row */}
+      {!restricted && (
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
         <Link href="/backoffice/pedidos?status=AGUARDANDO_PAGAMENTO" className="card group flex items-center gap-4 p-5 transition-colors hover:border-warning/50">
           <div className="grid size-11 place-items-center rounded-full border border-warning/40 bg-warning/10">
@@ -130,8 +141,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <ArrowRight size={16} className="text-faint transition-transform group-hover:translate-x-1" />
         </Link>
       </div>
+      )}
 
       {/* Central de alertas */}
+      {!restricted && (
       <div className="mt-4 card overflow-hidden">
         <div className="flex items-center justify-between border-b border-line px-5 py-4">
           <SectionTitle>Central de alertas</SectionTitle>
@@ -156,8 +169,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           </div>
         )}
       </div>
+      )}
 
       {/* Sales channel split */}
+      {!restricted && (
       <div className="mt-6 card p-6">
         <SectionTitle>Vendas do período · físico × online</SectionTitle>
         {(() => {
@@ -183,7 +198,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           );
         })()}
       </div>
+      )}
 
+      {!restricted && (
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
         {/* Revenue chart */}
         <div className="card p-6">
@@ -222,13 +239,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           )}
         </div>
       </div>
+      )}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         {/* Recent orders */}
         <div className="card overflow-hidden">
           <div className="flex items-center justify-between border-b border-line px-5 py-4">
-            <SectionTitle>Últimos pedidos</SectionTitle>
-            <Link href="/backoffice/pedidos" className="text-xs font-semibold text-orange hover:underline">Ver todos</Link>
+            <SectionTitle>{restricted ? "Minhas vendas recentes" : "Últimos pedidos"}</SectionTitle>
+            {!restricted && <Link href="/backoffice/pedidos" className="text-xs font-semibold text-orange hover:underline">Ver todos</Link>}
           </div>
           {d.recentOrders.length === 0 ? (
             <p className="p-8 text-center text-sm text-muted">Nenhum pedido ainda.</p>
@@ -251,6 +269,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         </div>
 
         {/* Low stock */}
+        {!restricted && (
         <div className="card overflow-hidden">
           <div className="flex items-center justify-between border-b border-line px-5 py-4">
             <SectionTitle>Estoque baixo</SectionTitle>
@@ -274,6 +293,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             </div>
           )}
         </div>
+        )}
       </div>
     </>
   );

@@ -12,16 +12,17 @@ import { initials, cn } from "@/lib/utils";
 
 export type UserRow = {
   id: string; username: string; displayName: string; role: string;
-  commissionPct: number; permissions: string[]; active: boolean;
+  commissionPct: number; permissions: string[]; active: boolean; onlyOwnSales: boolean;
 };
 
 type FormState = {
   id?: string; username: string; displayName: string; role: string;
-  password: string; commissionPct: string; permissions: string[];
+  password: string; commissionPct: string; permissions: string[]; onlyOwnSales: boolean;
 };
 
 const empty: FormState = {
-  username: "", displayName: "", role: "VENDEDOR", password: "", commissionPct: "0", permissions: ["dashboard", "pedidos", "clientes"],
+  username: "", displayName: "", role: "VENDEDOR", password: "", commissionPct: "0",
+  permissions: ["dashboard", "pedidos", "clientes"], onlyOwnSales: true,
 };
 
 export function UsersManager({ users }: { users: UserRow[] }) {
@@ -35,7 +36,7 @@ export function UsersManager({ users }: { users: UserRow[] }) {
 
   function openNew() { setF(empty); setOpen(true); }
   function openEdit(u: UserRow) {
-    setF({ id: u.id, username: u.username, displayName: u.displayName, role: u.role, password: "", commissionPct: String(u.commissionPct), permissions: u.permissions });
+    setF({ id: u.id, username: u.username, displayName: u.displayName, role: u.role, password: "", commissionPct: String(u.commissionPct), permissions: u.permissions, onlyOwnSales: u.onlyOwnSales });
     setOpen(true);
   }
 
@@ -47,6 +48,7 @@ export function UsersManager({ users }: { users: UserRow[] }) {
       password: f.password || undefined,
       commissionPct: f.commissionPct ? Number(f.commissionPct) : 0,
       permissions: f.permissions,
+      onlyOwnSales: f.onlyOwnSales,
     });
     setSaving(false);
     if (res.ok) { toast("Usuário salvo.", "success"); setOpen(false); router.refresh(); }
@@ -108,6 +110,13 @@ export function UsersManager({ users }: { users: UserRow[] }) {
             <>
               <label className="block sm:max-w-[50%]"><span className={label}>Comissão (%)</span>
                 <input className="field" value={f.commissionPct} onChange={(e) => set("commissionPct", e.target.value)} inputMode="decimal" />
+              </label>
+              <label className="flex items-start gap-2 rounded-[var(--radius)] border border-line p-3 text-sm">
+                <input type="checkbox" checked={f.onlyOwnSales} onChange={(e) => set("onlyOwnSales", e.target.checked)} className="mt-0.5 size-4 accent-orange" />
+                <span>
+                  <span className="font-medium">Ver apenas as próprias vendas</span>
+                  <span className="block text-xs text-muted">Quando ligado, este vendedor só enxerga as vendas feitas por ele e não vê o total geral da loja (recomendado para vendedores).</span>
+                </span>
               </label>
               <div>
                 <span className={label}>Módulos permitidos</span>

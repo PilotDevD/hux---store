@@ -19,7 +19,8 @@ export type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
 
 export type DashboardRange = { start: Date; end: Date };
 
-export async function getDashboardData(range?: DashboardRange) {
+export async function getDashboardData(range?: DashboardRange, opts?: { sellerId?: string }) {
+  const sellerId = opts?.sellerId;
   const now = new Date();
   const periodStart = range?.start ?? startOfMonth(now);
   const periodEnd = range?.end ?? now;
@@ -32,7 +33,7 @@ export async function getDashboardData(range?: DashboardRange) {
   const [paidOrders, awaiting, variants, recentOrders, pendingProdCount, customersCount] =
     await Promise.all([
       db.order.findMany({
-        where: { paymentStatus: "CONFIRMADO", status: { in: PAID_STATUSES } },
+        where: { paymentStatus: "CONFIRMADO", status: { in: PAID_STATUSES }, ...(sellerId ? { soldByUserId: sellerId } : {}) },
         include: { items: true },
       }),
       db.order.findMany({
@@ -44,6 +45,7 @@ export async function getDashboardData(range?: DashboardRange) {
         include: { product: { select: { name: true, brand: true } } },
       }),
       db.order.findMany({
+        where: sellerId ? { soldByUserId: sellerId } : undefined,
         orderBy: { createdAt: "desc" },
         take: 7,
         include: { items: { select: { id: true } } },

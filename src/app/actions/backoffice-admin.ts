@@ -97,6 +97,7 @@ const userSchema = z.object({
   password: z.string().optional(),
   commissionPct: z.coerce.number().min(0).max(100).optional(),
   permissions: z.array(z.string()).optional(),
+  onlyOwnSales: z.boolean().optional(),
 });
 
 export async function upsertUserAction(input: z.input<typeof userSchema>): Promise<{ ok: boolean; error?: string }> {
@@ -110,6 +111,7 @@ export async function upsertUserAction(input: z.input<typeof userSchema>): Promi
     username, displayName: u.displayName, role: u.role,
     commissionPct: u.role === "VENDEDOR" ? u.commissionPct ?? 0 : 0,
     permissions: JSON.stringify(u.role === "VENDEDOR" ? u.permissions ?? [] : []),
+    onlyOwnSales: u.role === "VENDEDOR" ? !!u.onlyOwnSales : false,
   };
 
   try {

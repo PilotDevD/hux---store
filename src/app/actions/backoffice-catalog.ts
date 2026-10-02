@@ -153,20 +153,37 @@ export async function upsertProductAction(
             },
           });
         } else {
-          const created = await db.productVariant.create({
-            data: {
-              size: v.size, color: v.color, colorHex: v.colorHex || null,
-              stock: v.stock,
-              priceOverride: v.priceOverride ? parseReaisToCents(v.priceOverride) : null,
-              cost: v.cost ? parseReaisToCents(v.cost) : 0,
-              active: true,
-              productId: p.id, sku: skuFor(p.brand, p.type, v.size, v.color, Date.now() + i),
-            },
-          });
-          if (created.stock > 0) {
-            await db.stockMovement.create({
-              data: { variantId: created.id, type: "ENTRADA", qty: created.stock, reason: "Variante adicionada", userId: staff.id },
+          // Guard against duplicates: if a variant with the same size+color already
+          // exists for this product (even deactivated), reuse/reactivate it instead
+          // of creating a second one (which would split the stock and break sales).
+          const key = `${v.size}|${(v.color || "").toLowerCase().trim()}`;
+          const match = existing.variants.find((ev) => `${ev.size}|${(ev.color || "").toLowerCase().trim()}` === key);
+          if (match) {
+            await db.productVariant.update({
+              where: { id: match.id },
+              data: {
+                color: v.color, colorHex: v.colorHex || null,
+                priceOverride: v.priceOverride ? parseReaisToCents(v.priceOverride) : null,
+                cost: v.cost ? parseReaisToCents(v.cost) : 0,
+                active: true,
+              },
             });
+          } else {
+            const created = await db.productVariant.create({
+              data: {
+                size: v.size, color: v.color, colorHex: v.colorHex || null,
+                stock: v.stock,
+                priceOverride: v.priceOverride ? parseReaisToCents(v.priceOverride) : null,
+                cost: v.cost ? parseReaisToCents(v.cost) : 0,
+                active: true,
+                productId: p.id, sku: skuFor(p.brand, p.type, v.size, v.color, Date.now() + i),
+              },
+            });
+            if (created.stock > 0) {
+              await db.stockMovement.create({
+                data: { variantId: created.id, type: "ENTRADA", qty: created.stock, reason: "Variante adicionada", userId: staff.id },
+              });
+            }
           }
         }
       }
@@ -274,6 +291,23 @@ export async function hardDeleteProductAction(
 }
 
 // ----------------------------- stock ---------------------------------------
+
+export type VariantMovement = { id: string; type: string; qty: number; reason: string; createdAt: string; user: string | null };
+
+/** Full stock-movement history of a variant — so staff can audit every change. */
+export async function getVariantMovementsAction(variantId: string): Promise<VariantMovement[]> {
+  await requireModule("estoque");
+  const movs = await db.stockMovement.findMany({
+    where: { variantId },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+    include: { user: { select: { displayName: true } } },
+  });
+  return movs.map((m) => ({
+    id: m.id, type: m.type, qty: m.qty, reason: m.reason,
+    createdAt: m.createdAt.toISOString(), user: m.user?.displayName ?? null,
+  }));
+}
 
 const stockSchema = z.object({
   variantId: z.string(),

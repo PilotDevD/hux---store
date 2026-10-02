@@ -18,11 +18,13 @@ export const metadata: Metadata = { title: "Vendas" };
 const PAID = ["PAGO", "EM_SEPARACAO", "ENVIADO", "ENTREGUE"];
 
 export default async function VendasPage() {
-  await guardModule("vendas");
+  const staff = await guardModule("vendas");
+  const restricted = staff.onlyOwnSales; // vendedor vê apenas as próprias vendas
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
   const [allSales, sellers, monthPaid, commissionOrders, variants, customers, brandNames, cardMachines, ambBalances] = await Promise.all([
     db.order.findMany({
+      where: restricted ? { soldByUserId: staff.id } : undefined,
       orderBy: { createdAt: "desc" },
       take: 500,
       include: {
@@ -32,11 +34,11 @@ export default async function VendasPage() {
     }),
     db.user.findMany({ where: { active: true }, select: { id: true, displayName: true, commissionPct: true, role: true }, orderBy: { displayName: "asc" } }),
     db.order.findMany({
-      where: { paymentStatus: "CONFIRMADO", status: { in: PAID }, OR: [{ paidAt: { gte: monthStart } }, { AND: [{ paidAt: null }, { createdAt: { gte: monthStart } }] }] },
+      where: { paymentStatus: "CONFIRMADO", status: { in: PAID }, ...(restricted ? { soldByUserId: staff.id } : {}), OR: [{ paidAt: { gte: monthStart } }, { AND: [{ paidAt: null }, { createdAt: { gte: monthStart } }] }] },
       select: { channel: true, subtotal: true, discountTotal: true },
     }),
     db.order.findMany({
-      where: { paymentStatus: "CONFIRMADO", status: { in: PAID }, soldByUserId: { not: null }, OR: [{ paidAt: { gte: monthStart } }, { AND: [{ paidAt: null }, { createdAt: { gte: monthStart } }] }] },
+      where: { paymentStatus: "CONFIRMADO", status: { in: PAID }, soldByUserId: restricted ? staff.id : { not: null }, OR: [{ paidAt: { gte: monthStart } }, { AND: [{ paidAt: null }, { createdAt: { gte: monthStart } }] }] },
       select: { soldByUserId: true, soldByName: true, subtotal: true, discountTotal: true },
     }),
     db.productVariant.findMany({
@@ -91,31 +93,37 @@ export default async function VendasPage() {
     brands: [...new Set(o.items.map((i) => i.brand))],
   }));
 
+  const sellerList = (restricted ? sellers.filter((s) => s.id === staff.id) : sellers).map((s) => ({ id: s.id, name: s.displayName }));
+
   return (
     <>
-      <PageHeader eyebrow="Ponto de venda" title="Vendas" subtitle="Registre vendas físicas, filtre e acompanhe o mix físico × online do mês." />
+      <PageHeader
+        eyebrow="Ponto de venda"
+        title="Vendas"
+        subtitle={restricted ? "Suas vendas e comissão do mês." : "Registre vendas físicas, filtre e acompanhe o mix físico × online do mês."}
+      />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <StatCard label="Vendas físicas (mês)" value={String(manual.length)} hint={formatCents(rev(manual))} icon={Store} tone="positive" />
-        <StatCard label="Vendas online (mês)" value={String(online.length)} hint={formatCents(rev(online))} icon={Globe} tone="info" />
-        <StatCard label="Total de vendas (mês)" value={String(monthPaid.length)} hint={formatCents(rev(monthPaid))} icon={Receipt} />
+        <StatCard label={restricted ? "Minhas vendas físicas (mês)" : "Vendas físicas (mês)"} value={String(manual.length)} hint={formatCents(rev(manual))} icon={Store} tone="positive" />
+        <StatCard label={restricted ? "Minhas vendas online (mês)" : "Vendas online (mês)"} value={String(online.length)} hint={formatCents(rev(online))} icon={Globe} tone="info" />
+        <StatCard label={restricted ? "Minhas vendas (mês)" : "Total de vendas (mês)"} value={String(monthPaid.length)} hint={formatCents(rev(monthPaid))} icon={Receipt} />
       </div>
 
       <VendasManager
         variants={variantOptions}
-        sellers={sellers.map((s) => ({ id: s.id, name: s.displayName }))}
+        sellers={sellerList}
         customers={customers}
         machines={cardMachines.map((m): CardMachineOption => ({ id: m.id, name: m.name, provider: m.provider, debitFee: m.debitFee, creditFee: m.creditFee, pixFee: m.pixFee, installmentFees: parseJson<InstallmentFee[]>(m.installmentFees, []) }))}
         ambassadors={ambBalances}
       />
 
       <div className="mt-8">
-        <p className="eyebrow mb-4">Todas as vendas</p>
-        <SalesExplorer sales={saleRows} sellers={sellers.map((s) => ({ id: s.id, name: s.displayName }))} brands={brandNames} />
+        <p className="eyebrow mb-4">{restricted ? "Minhas vendas" : "Todas as vendas"}</p>
+        <SalesExplorer sales={saleRows} sellers={sellerList} brands={brandNames} />
       </div>
 
       <div className="mt-8 card overflow-hidden">
-        <div className="border-b border-line px-5 py-4"><p className="eyebrow">Comissões do mês (por vendedor)</p></div>
+        <div className="border-b border-line px-5 py-4"><p className="eyebrow">{restricted ? "Minha comissão do mês" : "Comissões do mês (por vendedor)"}</p></div>
         {commissions.length === 0 ? (
           <p className="p-6 text-center text-sm text-muted">Nenhuma venda com vendedor atribuído neste mês.</p>
         ) : (

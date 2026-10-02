@@ -51,6 +51,7 @@ export type StaffSession = {
   role: Role;
   permissions: string[];
   commissionPct: number;
+  onlyOwnSales: boolean;
 };
 
 /** Full staff user from DB (null if not logged / inactive). Request-cached. */
@@ -71,6 +72,7 @@ export const getStaff = cache(async (): Promise<StaffSession | null> => {
     role: user.role as Role,
     permissions,
     commissionPct: user.commissionPct,
+    onlyOwnSales: user.onlyOwnSales,
   };
 });
 
