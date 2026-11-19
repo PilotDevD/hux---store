@@ -10,6 +10,7 @@ import { CustomerAutocomplete, type CustomerLite } from "./customer-autocomplete
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { formatCents } from "@/lib/money";
+import { MANUAL_PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from "@/lib/enums";
 import { formatDate, cn } from "@/lib/utils";
 
 export type VariantOption = { id: string; label: string; brand: string; stock: number; price: number; search?: string };
@@ -90,9 +91,11 @@ export function MalaManager({ malas, variants, customers }: { malas: MalaRow[]; 
   // settle
   const [settle, setSettle] = useState<MalaRow | null>(null);
   const [decisions, setDecisions] = useState<Record<string, "COMPROU" | "DEVOLVEU">>({});
+  const [settleMethod, setSettleMethod] = useState("PIX_MANUAL");
   const [rowBusy, setRowBusy] = useState(false);
   function openSettle(m: MalaRow) {
     setSettle(m);
+    setSettleMethod("PIX_MANUAL");
     const d: Record<string, "COMPROU" | "DEVOLVEU"> = {};
     m.items.forEach((i) => (d[i.id] = "DEVOLVEU"));
     setDecisions(d);
@@ -100,7 +103,7 @@ export function MalaManager({ malas, variants, customers }: { malas: MalaRow[]; 
   async function confirmSettle() {
     if (!settle) return;
     setRowBusy(true);
-    const res = await settleMalaAction(settle.id, decisions);
+    const res = await settleMalaAction(settle.id, decisions, settleMethod);
     setRowBusy(false);
     if (res.ok) { toast(res.number ? `Acerto ok! Venda ${res.number}.` : "Acerto concluído.", "success"); setSettle(null); router.refresh(); }
     else toast(res.error ?? "Erro.", "error");
@@ -247,6 +250,26 @@ export function MalaManager({ malas, variants, customers }: { malas: MalaRow[]; 
                 </div>
               ))}
             </div>
+
+            {(() => {
+              const boughtTotal = settle.items.filter((i) => decisions[i.id] === "COMPROU").reduce((s, i) => s + i.unitPrice * i.qty, 0);
+              if (boughtTotal <= 0) return null;
+              return (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius)] border border-orange/40 bg-orange/5 p-3">
+                  <div>
+                    <p className="data-label text-faint">Total da venda</p>
+                    <p className="text-lg font-semibold text-orange">{formatCents(boughtTotal)}</p>
+                  </div>
+                  <label className="text-sm">
+                    <span className="data-label text-faint">Forma de pagamento</span>
+                    <select className="field mt-1 w-44 py-2 text-sm" value={settleMethod} onChange={(e) => setSettleMethod(e.target.value)}>
+                      {MANUAL_PAYMENT_METHODS.filter((m) => m !== "A_PRAZO").map((m) => <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m] ?? m}</option>)}
+                    </select>
+                  </label>
+                </div>
+              );
+            })()}
+
             <div className="flex justify-end gap-3 pt-2">
               <button onClick={() => setSettle(null)} className="btn btn-ghost">Voltar</button>
               <button onClick={confirmSettle} disabled={rowBusy} className="btn btn-primary">{rowBusy && <Loader2 size={16} className="animate-spin" />} Confirmar acerto</button>

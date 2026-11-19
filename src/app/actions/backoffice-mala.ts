@@ -6,6 +6,11 @@ import { db } from "@/lib/db";
 import { requireModule } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { computePrice, getActivePromotions } from "@/lib/pricing";
+import { formatCents } from "@/lib/money";
+import { MANUAL_PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from "@/lib/enums";
+
+// A mala é acertada à vista (crediário a prazo usa o fluxo de parcelas da venda física).
+const MALA_PAYMENT_METHODS = MANUAL_PAYMENT_METHODS.filter((m) => m !== "A_PRAZO");
 
 function malaOrderNumber(): string {
   const yy = new Date().getFullYear().toString().slice(-2);
@@ -149,8 +154,10 @@ export async function editMalaAction(input: z.input<typeof editSchema>): Promise
 export async function settleMalaAction(
   malaId: string,
   decisions: Record<string, "COMPROU" | "DEVOLVEU">,
+  paymentMethod = "PIX_MANUAL",
 ): Promise<{ ok: boolean; error?: string; number?: string }> {
   const staff = await requireModule("mala");
+  if (!(MALA_PAYMENT_METHODS as readonly string[]).includes(paymentMethod)) return { ok: false, error: "Forma de pagamento inválida." };
   const mala = await db.mala.findUnique({ where: { id: malaId }, include: { items: true } });
   if (!mala) return { ok: false, error: "Mala não encontrada." };
   if (mala.status !== "COM_CLIENTE") return { ok: false, error: "Mala já finalizada." };
@@ -176,17 +183,21 @@ export async function settleMalaAction(
         await tx.order.create({
           data: {
             number, customerId: null, channel: "MANUAL", status: "PAGO",
-            paymentMethod: "PIX_MANUAL", paymentStatus: "CONFIRMADO",
+            paymentMethod, paymentStatus: "CONFIRMADO",
             subtotal, discountTotal: 0, shippingTotal: 0, total: subtotal,
             costTotal: bought.reduce((s, i) => s + costOf(i.variantId) * i.qty, 0),
             shippingLabel: "Mala HUX", addressSnapshot: "{}",
             customerSnapshot: JSON.stringify({ name: mala.customerName, email: "", phone: mala.customerPhone }),
             paidAt: new Date(), handledById: staff.id, soldByUserId: staff.id, soldByName: staff.displayName,
-            notes: `Venda originada de Mala HUX.`,
+            notes: `Venda originada de Mala HUX (${PAYMENT_METHOD_LABELS[paymentMethod] ?? paymentMethod}).`,
             items: { create: bought.map((i) => ({ variantId: i.variantId, brand: i.brand, productName: i.productName, type: i.type, size: i.size, color: i.color, sku: i.sku, unitPrice: i.unitPrice, unitCost: costOf(i.variantId), qty: i.qty, lineTotal: i.unitPrice * i.qty })) },
-            events: { create: [{ status: "PAGO", note: "Acerto de Mala HUX." }] },
+            events: { create: [{ status: "PAGO", note: `Acerto de Mala HUX (${PAYMENT_METHOD_LABELS[paymentMethod] ?? paymentMethod}).` }] },
           },
         });
+        // Caixa: venda em dinheiro entra no saldo automaticamente.
+        if (paymentMethod === "DINHEIRO" && subtotal > 0) {
+          await tx.cashEntry.create({ data: { kind: "ENTRADA", amount: subtotal, note: `Venda de mala ${number} (dinheiro)`, userId: staff.id, userName: staff.displayName } });
+        }
         for (const it of bought) await tx.malaItem.update({ where: { id: it.id }, data: { decision: "COMPROU" } });
       }
       await tx.mala.update({ where: { id: malaId }, data: { status: "FINALIZADA", settledAt: new Date(), orderNumber: number ?? null } });
@@ -194,7 +205,7 @@ export async function settleMalaAction(
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Erro no acerto da mala." };
   }
-  await logAudit({ staff, action: "STATUS", entity: "Mala HUX", entityId: malaId, summary: `Acerto da mala de ${mala.customerName}: ${bought.length} comprou, ${returned.length} devolveu${number ? ` → pedido ${number}` : ""}` });
+  await logAudit({ staff, action: "STATUS", entity: "Mala HUX", entityId: malaId, summary: `Acerto da mala de ${mala.customerName}: ${bought.length} comprou, ${returned.length} devolveu${number ? ` (${PAYMENT_METHOD_LABELS[paymentMethod] ?? paymentMethod}, ${formatCents(bought.reduce((s, i) => s + i.unitPrice * i.qty, 0))}) → pedido ${number}` : ""}` });
   revalidatePath("/backoffice/mala");
   revalidatePath("/backoffice/estoque");
   revalidatePath("/backoffice/pedidos");
