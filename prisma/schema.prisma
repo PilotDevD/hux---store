@@ -150,6 +150,7 @@ model ProductVariant {
   stock         Int      @default(0)
   priceOverride Int?     // cents — overrides product.basePrice for this variant
   cost          Int      @default(0) // cents — unit cost (margin / finance)
+  image         String?  // foto específica desta cor (troca a foto principal na loja)
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
 

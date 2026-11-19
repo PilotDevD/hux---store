@@ -53,6 +53,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
         stock: String(v.stock),
         cost: reais(v.cost),
         priceOverride: reais(v.priceOverride),
+        image: v.image ?? "",
       })),
   };
 

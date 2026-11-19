@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "./db";
-import { parseJson } from "./utils";
+import { parseJson, cleanImages, cleanImageUrl } from "./utils";
 import { computePrice, getActivePromotions, type ActivePromotion } from "./pricing";
 import type { Prisma } from "@prisma/client";
 
@@ -25,7 +25,7 @@ type ProductWithVariants = Prisma.ProductGetPayload<{ include: { variants: true 
 
 function toCard(p: ProductWithVariants, promos: ActivePromotion[]): ProductCardData {
   const { price, compareAt, promotionName } = computePrice(p, promos);
-  const images = parseJson<string[]>(p.images, []);
+  const images = cleanImages(parseJson<string[]>(p.images, []));
   const totalStock = p.variants.reduce((s, v) => s + (v.active ? v.stock : 0), 0);
   const sizes = Array.from(
     new Set(p.variants.filter((v) => v.active && v.stock > 0).map((v) => v.size)),
@@ -150,7 +150,7 @@ export type ProductDetail = {
     price: number;
     sku: string;
   }[];
-  colors: { name: string; hex: string | null }[];
+  colors: { name: string; hex: string | null; image: string | null }[];
   sizes: string[];
   totalStock: number;
 };
@@ -166,10 +166,15 @@ export async function getProductBySlug(slug: string): Promise<ProductDetail | nu
   if (!p || !p.active) return null;
 
   const { price, compareAt, promotionName } = computePrice(p, promos);
-  const images = parseJson<string[]>(p.images, []);
+  const images = cleanImages(parseJson<string[]>(p.images, []));
 
-  const colorsMap = new Map<string, string | null>();
-  for (const v of p.variants) if (!colorsMap.has(v.color)) colorsMap.set(v.color, v.colorHex);
+  const colorsMap = new Map<string, { hex: string | null; image: string | null }>();
+  for (const v of p.variants) {
+    const vImg = cleanImageUrl(v.image);
+    const cur = colorsMap.get(v.color);
+    if (!cur) colorsMap.set(v.color, { hex: v.colorHex, image: vImg });
+    else if (!cur.image && vImg) cur.image = vImg; // completa a foto se outra variante da cor tiver
+  }
 
   return {
     id: p.id,
@@ -195,7 +200,7 @@ export async function getProductBySlug(slug: string): Promise<ProductDetail | nu
       price: v.priceOverride ?? price,
       sku: v.sku,
     })),
-    colors: Array.from(colorsMap.entries()).map(([name, hex]) => ({ name, hex })),
+    colors: Array.from(colorsMap.entries()).map(([name, v]) => ({ name, hex: v.hex, image: v.image })),
     sizes: Array.from(new Set(p.variants.map((v) => v.size))),
     totalStock: p.variants.reduce((s, v) => s + v.stock, 0),
   };
@@ -224,12 +229,12 @@ export async function getCollectionsWithCover(): Promise<CollectionCard[]> {
     },
   });
   return collections.map((c) => {
-    const imgs = parseJson<string[]>(c.products[0]?.images ?? "[]", []);
+    const imgs = cleanImages(parseJson<string[]>(c.products[0]?.images ?? "[]", []));
     return {
       slug: c.slug,
       name: c.name,
       description: c.description,
-      cover: c.heroImage ?? imgs[0] ?? null,
+      cover: cleanImageUrl(c.heroImage) ?? imgs[0] ?? null,
       count: c._count.products,
     };
   });

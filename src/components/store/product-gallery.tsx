@@ -1,12 +1,27 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useProductColor } from "./product-color-context";
 
 export function ProductGallery({ images, alt }: { images: string[]; alt: string }) {
+  const { leadImage } = useProductColor();
   const [active, setActive] = useState(0);
-  const list = images.length ? images : [];
+
+  // Quando uma cor com foto própria é selecionada, essa foto entra na galeria
+  // (no início, se ainda não existir) e vira a imagem principal.
+  const list = useMemo(() => {
+    const base = images.length ? images : [];
+    if (leadImage && !base.includes(leadImage)) return [leadImage, ...base];
+    return base;
+  }, [images, leadImage]);
+
+  useEffect(() => {
+    if (!leadImage) return;
+    const idx = list.indexOf(leadImage);
+    if (idx >= 0) setActive(idx);
+  }, [leadImage, list]);
 
   return (
     <div className="flex flex-col-reverse gap-3 md:flex-row">

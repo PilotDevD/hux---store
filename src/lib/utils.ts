@@ -16,6 +16,25 @@ export function parseJson<T>(raw: string | null | undefined, fallback: T): T {
   }
 }
 
+/**
+ * Mantém apenas URLs de imagem que o next/image aceita: caminhos locais ("/..")
+ * ou http(s). Fotos importadas com caminhos inválidos (ex.: "file:///C:/...")
+ * são descartadas — senão o next/image lança erro e derruba a página inteira.
+ */
+export function cleanImageUrl(src: string | null | undefined): string | null {
+  if (!src) return null;
+  const s = src.trim();
+  if (s.startsWith("/")) return s;
+  if (/^https?:\/\//i.test(s)) return s;
+  return null;
+}
+
+/** Filtra uma lista de URLs de imagem, removendo as inválidas. */
+export function cleanImages(arr: (string | null | undefined)[] | null | undefined): string[] {
+  if (!arr) return [];
+  return arr.map(cleanImageUrl).filter((s): s is string => !!s);
+}
+
 /** URL/handle-safe slug from arbitrary text. */
 export function slugify(text: string): string {
   return text

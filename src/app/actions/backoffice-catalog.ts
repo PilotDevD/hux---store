@@ -75,6 +75,7 @@ const variantSchema = z.object({
   stock: z.coerce.number().int().min(0),
   priceOverride: z.string().optional(),
   cost: z.string().optional(),
+  image: z.string().optional(),
 });
 
 const productSchema = z.object({
@@ -154,6 +155,7 @@ export async function upsertProductAction(
             where: { id: v.id },
             data: {
               size: v.size, color: v.color, colorHex: v.colorHex || null,
+              image: v.image || null,
               ...(isSeller ? {} : {
                 priceOverride: v.priceOverride ? parseReaisToCents(v.priceOverride) : null,
                 cost: v.cost ? parseReaisToCents(v.cost) : 0,
@@ -172,6 +174,7 @@ export async function upsertProductAction(
               where: { id: match.id },
               data: {
                 color: v.color, colorHex: v.colorHex || null,
+                image: v.image || null,
                 ...(isSeller ? {} : {
                   priceOverride: v.priceOverride ? parseReaisToCents(v.priceOverride) : null,
                   cost: v.cost ? parseReaisToCents(v.cost) : 0,
@@ -183,6 +186,7 @@ export async function upsertProductAction(
             const created = await db.productVariant.create({
               data: {
                 size: v.size, color: v.color, colorHex: v.colorHex || null,
+                image: v.image || null,
                 stock: v.stock,
                 priceOverride: isSeller ? null : (v.priceOverride ? parseReaisToCents(v.priceOverride) : null),
                 cost: isSeller ? 0 : (v.cost ? parseReaisToCents(v.cost) : 0),
@@ -228,6 +232,7 @@ export async function upsertProductAction(
         variants: {
           create: p.variants.map((v, idx) => ({
             size: v.size, color: v.color, colorHex: v.colorHex || null,
+            image: v.image || null,
             stock: v.stock,
             priceOverride: v.priceOverride ? parseReaisToCents(v.priceOverride) : null,
             cost: v.cost ? parseReaisToCents(v.cost) : 0,

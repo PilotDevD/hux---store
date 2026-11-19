@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { guardModule } from "@/lib/bo-guard";
 import { db } from "@/lib/db";
-import { parseJson } from "@/lib/utils";
+import { parseJson, cleanImages } from "@/lib/utils";
 import {
   PRODUCT_TYPES, PRODUCT_TYPE_LABELS, SIZES, SIZE_LABELS, GENDERS, GENDER_LABELS,
   type ProductType,
@@ -50,7 +50,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
   const sizeLabel = size ? SIZE_LABELS[size as keyof typeof SIZE_LABELS] ?? size : "";
 
   const items: ProductListItem[] = products.map((p) => {
-    const images = parseJson<string[]>(p.images, []);
+    const images = cleanImages(parseJson<string[]>(p.images, []));
     const activeVariants = p.variants.filter((v) => v.active);
     // When filtering by size, show the stock for THAT size (not the total).
     const stock = size

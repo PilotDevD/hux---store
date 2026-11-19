@@ -1,7 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { db } from "./db";
-import { parseJson } from "./utils";
+import { parseJson, cleanImages, cleanImageUrl } from "./utils";
 import { computePrice, getActivePromotions } from "./pricing";
 
 const CART_COOKIE = "hux_cart";
@@ -108,7 +108,7 @@ export async function getCartDetailed(customerId?: string | null): Promise<CartD
     const p = v.product;
     const { price, compareAt } = computePrice(p, promotions);
     const unit = v.priceOverride ?? price;
-    const images = parseJson<string[]>(p.images, []);
+    const images = cleanImages(parseJson<string[]>(p.images, []));
     lines.push({
       itemId: it.id,
       variantId: v.id,
@@ -120,7 +120,7 @@ export async function getCartDetailed(customerId?: string | null): Promise<CartD
       size: v.size,
       color: v.color,
       colorHex: v.colorHex,
-      image: images[0] ?? null,
+      image: cleanImageUrl(v.image) ?? images[0] ?? null,
       qty: it.qty,
       unitPrice: unit,
       compareAt: v.priceOverride ? null : compareAt,

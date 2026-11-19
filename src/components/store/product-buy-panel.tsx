@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Minus, Plus, ShoppingBag, Check, Zap, BellRing, Loader2 } from "lucide-react";
 import type { ProductDetail } from "@/lib/catalog";
@@ -9,14 +9,22 @@ import { formatCents, percentOff } from "@/lib/money";
 import { SIZE_LABELS, type Size } from "@/lib/enums";
 import { useCart } from "@/components/cart/cart-provider";
 import { useToast } from "@/components/ui/toast";
+import { useProductColor } from "./product-color-context";
 import { cn } from "@/lib/utils";
 
 export function ProductBuyPanel({ product }: { product: ProductDetail }) {
   const { add } = useCart();
   const { toast } = useToast();
   const router = useRouter();
+  const { setLeadImage } = useProductColor();
 
   const [color, setColor] = useState(product.colors[0]?.name ?? "");
+
+  // Troca a foto principal da galeria conforme a cor selecionada (item 12).
+  useEffect(() => {
+    const img = product.colors.find((c) => c.name === color)?.image ?? null;
+    setLeadImage(img);
+  }, [color, product.colors, setLeadImage]);
   const sizesForColor = useMemo(
     () => product.variants.filter((v) => v.color === color),
     [product.variants, color],

@@ -6,6 +6,7 @@ import { getProductBySlug, getRelatedProducts } from "@/lib/catalog";
 import { PRODUCT_TYPE_LABELS, GENDER_LABELS, type ProductType, type Gender } from "@/lib/enums";
 import { ProductGallery } from "@/components/store/product-gallery";
 import { ProductBuyPanel } from "@/components/store/product-buy-panel";
+import { ProductColorProvider } from "@/components/store/product-color-context";
 import { ShippingCalculator } from "@/components/store/shipping-calculator";
 import { ProductCard } from "@/components/store/product-card";
 import { SectionHeading } from "@/components/site/section-heading";
@@ -44,6 +45,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
         <span className="text-muted">{product.name}</span>
       </nav>
 
+      <ProductColorProvider>
       <div className="grid gap-10 lg:grid-cols-2 lg:gap-16">
         <ProductGallery images={product.images} alt={product.name} />
 
@@ -105,6 +107,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           )}
         </div>
       </div>
+      </ProductColorProvider>
 
       {/* Related */}
       {related.length > 0 && (

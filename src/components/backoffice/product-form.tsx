@@ -14,7 +14,7 @@ import {
 
 type VariantRow = {
   id?: string; sku?: string; size: string; color: string; colorHex: string;
-  stock: string; cost: string; priceOverride: string;
+  stock: string; cost: string; priceOverride: string; image?: string;
 };
 
 export type ProductFormInitial = {
@@ -178,6 +178,7 @@ export function ProductForm({
         stock: Number(v.stock) || 0,
         cost: v.cost || undefined,
         priceOverride: v.priceOverride || undefined,
+        image: v.image || undefined,
       })),
     };
     const res = await upsertProductAction(input);
@@ -386,6 +387,7 @@ export function ProductForm({
                 </p>
               )}
               <label><span className="data-label text-faint">Tam.</span>
+
                 <select className="field mt-1 py-2" value={v.size} onChange={(e) => setVariant(i, "size", e.target.value)}>
                   {SIZES.map((s) => <option key={s} value={s}>{SIZE_LABELS[s]}</option>)}
                 </select>
@@ -419,6 +421,37 @@ export function ProductForm({
               <button onClick={() => removeVariant(i)} className="mt-5 grid size-9 place-items-center self-start text-faint hover:text-negative" aria-label="Remover variante">
                 <Trash2 size={16} />
               </button>
+
+              {/* Foto da cor — troca a foto principal na loja ao selecionar esta cor */}
+              <div className={cn("col-span-2", sellerMode ? "sm:col-span-5" : "sm:col-span-7")}>
+                <span className="data-label text-faint">Foto desta cor (opcional — troca a foto principal na loja)</span>
+                {imgList.length === 0 ? (
+                  <p className="mt-1 text-xs text-faint">Envie fotos acima para poder vincular uma a esta cor.</p>
+                ) : (
+                  <div className="mt-1.5 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setVariant(i, "image", "")}
+                      className={cn("grid h-14 w-14 place-items-center rounded-[var(--radius)] border text-[10px] text-faint", !v.image ? "border-orange text-orange" : "border-line hover:border-ink-soft")}
+                      title="Sem foto específica (usa a capa)"
+                    >
+                      Capa
+                    </button>
+                    {imgList.map((src) => (
+                      <button
+                        key={src}
+                        type="button"
+                        onClick={() => setVariant(i, "image", src)}
+                        className={cn("relative h-14 w-14 overflow-hidden rounded-[var(--radius)] border", v.image === src ? "border-orange ring-2 ring-orange/40" : "border-line hover:border-ink-soft")}
+                        title="Usar esta foto para a cor"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={src} alt="" className="size-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </div>

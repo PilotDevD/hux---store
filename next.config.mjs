@@ -6,9 +6,15 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   images: {
+    // Produtos importados têm fotos em CDNs externos arbitrários (e alguns
+    // registros antigos trazem caminhos inválidos). O otimizador do next/image
+    // valida o host e LANÇA erro (HTTP 500) para qualquer host não listado,
+    // derrubando a loja inteira. Desligar a otimização renderiza a imagem como
+    // <img> normal — sem validação de host e sem quebrar a página.
+    unoptimized: true,
     remotePatterns: [
-      { protocol: "https", hostname: "images.unsplash.com" },
-      { protocol: "https", hostname: "**.public.blob.vercel-storage.com" },
+      { protocol: "https", hostname: "**" },
+      { protocol: "http", hostname: "**" },
     ],
   },
   experimental: {
