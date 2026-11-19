@@ -92,10 +92,14 @@ export function MalaManager({ malas, variants, customers }: { malas: MalaRow[]; 
   const [settle, setSettle] = useState<MalaRow | null>(null);
   const [decisions, setDecisions] = useState<Record<string, "COMPROU" | "DEVOLVEU">>({});
   const [settleMethod, setSettleMethod] = useState("PIX_MANUAL");
+  const [settleDown, setSettleDown] = useState("");
+  const [settleParcelas, setSettleParcelas] = useState("2");
+  const [settleFirstDue, setSettleFirstDue] = useState("");
   const [rowBusy, setRowBusy] = useState(false);
   function openSettle(m: MalaRow) {
     setSettle(m);
     setSettleMethod("PIX_MANUAL");
+    setSettleDown(""); setSettleParcelas("2"); setSettleFirstDue("");
     const d: Record<string, "COMPROU" | "DEVOLVEU"> = {};
     m.items.forEach((i) => (d[i.id] = "DEVOLVEU"));
     setDecisions(d);
@@ -103,7 +107,10 @@ export function MalaManager({ malas, variants, customers }: { malas: MalaRow[]; 
   async function confirmSettle() {
     if (!settle) return;
     setRowBusy(true);
-    const res = await settleMalaAction(settle.id, decisions, settleMethod);
+    const res = await settleMalaAction(
+      settle.id, decisions, settleMethod,
+      settleMethod === "A_PRAZO" ? { downPayment: settleDown, parcelas: Number(settleParcelas) || 1, firstDueDate: settleFirstDue || undefined } : undefined,
+    );
     setRowBusy(false);
     if (res.ok) { toast(res.number ? `Acerto ok! Venda ${res.number}.` : "Acerto concluído.", "success"); setSettle(null); router.refresh(); }
     else toast(res.error ?? "Erro.", "error");
@@ -254,18 +261,39 @@ export function MalaManager({ malas, variants, customers }: { malas: MalaRow[]; 
             {(() => {
               const boughtTotal = settle.items.filter((i) => decisions[i.id] === "COMPROU").reduce((s, i) => s + i.unitPrice * i.qty, 0);
               if (boughtTotal <= 0) return null;
+              const down = (() => { const n = Number(String(settleDown).replace(/\./g, "").replace(",", ".")); return isNaN(n) ? 0 : Math.round(n * 100); })();
+              const financed = Math.max(0, boughtTotal - Math.min(boughtTotal, down));
+              const nParc = Math.max(1, Number(settleParcelas) || 1);
               return (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius)] border border-orange/40 bg-orange/5 p-3">
-                  <div>
-                    <p className="data-label text-faint">Total da venda</p>
-                    <p className="text-lg font-semibold text-orange">{formatCents(boughtTotal)}</p>
+                <div className="space-y-3 rounded-[var(--radius)] border border-orange/40 bg-orange/5 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="data-label text-faint">Total da venda</p>
+                      <p className="text-lg font-semibold text-orange">{formatCents(boughtTotal)}</p>
+                    </div>
+                    <label className="text-sm">
+                      <span className="data-label text-faint">Forma de pagamento</span>
+                      <select className="field mt-1 w-44 py-2 text-sm" value={settleMethod} onChange={(e) => setSettleMethod(e.target.value)}>
+                        {MANUAL_PAYMENT_METHODS.map((m) => <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m] ?? m}</option>)}
+                      </select>
+                    </label>
                   </div>
-                  <label className="text-sm">
-                    <span className="data-label text-faint">Forma de pagamento</span>
-                    <select className="field mt-1 w-44 py-2 text-sm" value={settleMethod} onChange={(e) => setSettleMethod(e.target.value)}>
-                      {MANUAL_PAYMENT_METHODS.filter((m) => m !== "A_PRAZO").map((m) => <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m] ?? m}</option>)}
-                    </select>
-                  </label>
+                  {settleMethod === "A_PRAZO" && (
+                    <div className="grid gap-2 border-t border-orange/20 pt-3 sm:grid-cols-3">
+                      <label className="text-sm"><span className="data-label text-faint">Entrada (R$)</span>
+                        <input className="field mt-1 py-2 text-sm" value={settleDown} onChange={(e) => setSettleDown(e.target.value)} placeholder="0,00" inputMode="decimal" />
+                      </label>
+                      <label className="text-sm"><span className="data-label text-faint">Parcelas</span>
+                        <input className="field mt-1 py-2 text-sm" value={settleParcelas} onChange={(e) => setSettleParcelas(e.target.value.replace(/\D/g, ""))} inputMode="numeric" />
+                      </label>
+                      <label className="text-sm"><span className="data-label text-faint">1º vencimento</span>
+                        <input type="date" className="field mt-1 py-2 text-sm" value={settleFirstDue} onChange={(e) => setSettleFirstDue(e.target.value)} />
+                      </label>
+                      <p className="sm:col-span-3 text-xs text-muted">
+                        Financiado {formatCents(financed)} em {nParc}x de ~{formatCents(financed > 0 ? Math.floor(financed / nParc) : 0)}. {financed <= 0 && <span className="text-negative">A entrada deve ser menor que o total.</span>}
+                      </p>
+                    </div>
+                  )}
                 </div>
               );
             })()}

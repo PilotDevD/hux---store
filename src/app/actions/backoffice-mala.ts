@@ -6,11 +6,27 @@ import { db } from "@/lib/db";
 import { requireModule } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { computePrice, getActivePromotions } from "@/lib/pricing";
-import { formatCents } from "@/lib/money";
+import { formatCents, parseReaisToCents } from "@/lib/money";
+import { parseDateInput } from "@/lib/utils";
 import { MANUAL_PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from "@/lib/enums";
 
-// A mala é acertada à vista (crediário a prazo usa o fluxo de parcelas da venda física).
-const MALA_PAYMENT_METHODS = MANUAL_PAYMENT_METHODS.filter((m) => m !== "A_PRAZO");
+// Formas aceitas no acerto da mala (inclui crediário "a prazo").
+const MALA_PAYMENT_METHODS = MANUAL_PAYMENT_METHODS;
+
+/** Divide um valor financiado em N parcelas mensais (resto na última). */
+function buildMalaAprazoPlan(financedCents: number, parcelas: number, firstDue: Date) {
+  const n = Math.max(1, Math.min(24, Math.floor(parcelas || 1)));
+  const base = Math.floor(financedCents / n);
+  const plan: { seq: number; amount: number; dueDate: Date }[] = [];
+  for (let i = 0; i < n; i++) {
+    const amount = i === n - 1 ? financedCents - base * (n - 1) : base;
+    const due = new Date(firstDue);
+    due.setMonth(firstDue.getMonth() + i);
+    due.setHours(23, 59, 59, 0);
+    plan.push({ seq: i + 1, amount, dueDate: due });
+  }
+  return plan;
+}
 
 function malaOrderNumber(): string {
   const yy = new Date().getFullYear().toString().slice(-2);
@@ -155,6 +171,7 @@ export async function settleMalaAction(
   malaId: string,
   decisions: Record<string, "COMPROU" | "DEVOLVEU">,
   paymentMethod = "PIX_MANUAL",
+  aprazo?: { downPayment?: string; parcelas?: number; firstDueDate?: string },
 ): Promise<{ ok: boolean; error?: string; number?: string }> {
   const staff = await requireModule("mala");
   if (!(MALA_PAYMENT_METHODS as readonly string[]).includes(paymentMethod)) return { ok: false, error: "Forma de pagamento inválida." };
@@ -164,6 +181,19 @@ export async function settleMalaAction(
 
   const bought = mala.items.filter((i) => decisions[i.id] === "COMPROU");
   const returned = mala.items.filter((i) => decisions[i.id] !== "COMPROU"); // default devolveu
+  const isAprazo = paymentMethod === "A_PRAZO";
+  const boughtSubtotal = bought.reduce((s, i) => s + i.unitPrice * i.qty, 0);
+
+  // Venda a prazo: valida entrada/parcelas.
+  let entrada = 0;
+  let plan: { seq: number; amount: number; dueDate: Date }[] = [];
+  if (isAprazo && bought.length > 0) {
+    entrada = Math.max(0, Math.min(boughtSubtotal, aprazo?.downPayment ? parseReaisToCents(aprazo.downPayment) : 0));
+    const financed = boughtSubtotal - entrada;
+    if (financed <= 0) return { ok: false, error: "Na venda a prazo, a entrada deve ser menor que o total comprado." };
+    const firstDue = parseDateInput(aprazo?.firstDueDate) ?? (() => { const dt = new Date(); dt.setMonth(dt.getMonth() + 1); return dt; })();
+    plan = buildMalaAprazoPlan(financed, aprazo?.parcelas ?? 1, firstDue);
+  }
 
   let number: string | undefined;
   try {
@@ -174,28 +204,32 @@ export async function settleMalaAction(
         await tx.stockMovement.create({ data: { variantId: it.variantId, type: "ENTRADA", qty: it.qty, reason: `Mala devolvida — ${mala.customerName}`, userId: staff.id } });
         await tx.malaItem.update({ where: { id: it.id }, data: { decision: "DEVOLVEU" } });
       }
-      // bought items become a paid sale (stock already out)
+      // bought items become a sale (stock already out)
       if (bought.length > 0) {
         number = malaOrderNumber();
-        const subtotal = bought.reduce((s, i) => s + i.unitPrice * i.qty, 0);
+        const subtotal = boughtSubtotal;
         const variants = await tx.productVariant.findMany({ where: { id: { in: bought.map((b) => b.variantId) } } });
         const costOf = (vid: string) => variants.find((v) => v.id === vid)?.cost ?? 0;
         await tx.order.create({
           data: {
-            number, customerId: null, channel: "MANUAL", status: "PAGO",
-            paymentMethod, paymentStatus: "CONFIRMADO",
+            number, customerId: null, channel: "MANUAL",
+            status: isAprazo ? "ENTREGUE" : "PAGO",
+            paymentMethod, paymentStatus: isAprazo ? "PENDENTE" : "CONFIRMADO",
+            downPayment: isAprazo ? entrada : 0,
             subtotal, discountTotal: 0, shippingTotal: 0, total: subtotal,
             costTotal: bought.reduce((s, i) => s + costOf(i.variantId) * i.qty, 0),
             shippingLabel: "Mala HUX", addressSnapshot: "{}",
             customerSnapshot: JSON.stringify({ name: mala.customerName, email: "", phone: mala.customerPhone }),
-            paidAt: new Date(), handledById: staff.id, soldByUserId: staff.id, soldByName: staff.displayName,
+            paidAt: isAprazo ? null : new Date(), handledById: staff.id, soldByUserId: staff.id, soldByName: staff.displayName,
             notes: `Venda originada de Mala HUX (${PAYMENT_METHOD_LABELS[paymentMethod] ?? paymentMethod}).`,
             items: { create: bought.map((i) => ({ variantId: i.variantId, brand: i.brand, productName: i.productName, type: i.type, size: i.size, color: i.color, sku: i.sku, unitPrice: i.unitPrice, unitCost: costOf(i.variantId), qty: i.qty, lineTotal: i.unitPrice * i.qty })) },
-            events: { create: [{ status: "PAGO", note: `Acerto de Mala HUX (${PAYMENT_METHOD_LABELS[paymentMethod] ?? paymentMethod}).` }] },
+            installments: isAprazo && plan.length ? { create: plan.map((p) => ({ seq: p.seq, amount: p.amount, dueDate: p.dueDate, status: "PENDENTE" })) } : undefined,
+            payments: !isAprazo ? { create: [{ kind: "PAGAMENTO", method: paymentMethod, amount: subtotal, userId: staff.id, userName: staff.displayName }] } : undefined,
+            events: { create: [{ status: isAprazo ? "ENTREGUE" : "PAGO", note: isAprazo ? `Acerto de Mala HUX a prazo. Entrada ${formatCents(entrada)} + ${plan.length}x.` : `Acerto de Mala HUX (${PAYMENT_METHOD_LABELS[paymentMethod] ?? paymentMethod}).` }] },
           },
         });
         // Caixa: venda em dinheiro entra no saldo automaticamente.
-        if (paymentMethod === "DINHEIRO" && subtotal > 0) {
+        if (!isAprazo && paymentMethod === "DINHEIRO" && subtotal > 0) {
           await tx.cashEntry.create({ data: { kind: "ENTRADA", amount: subtotal, note: `Venda de mala ${number} (dinheiro)`, userId: staff.id, userName: staff.displayName } });
         }
         for (const it of bought) await tx.malaItem.update({ where: { id: it.id }, data: { decision: "COMPROU" } });
@@ -205,7 +239,7 @@ export async function settleMalaAction(
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Erro no acerto da mala." };
   }
-  await logAudit({ staff, action: "STATUS", entity: "Mala HUX", entityId: malaId, summary: `Acerto da mala de ${mala.customerName}: ${bought.length} comprou, ${returned.length} devolveu${number ? ` (${PAYMENT_METHOD_LABELS[paymentMethod] ?? paymentMethod}, ${formatCents(bought.reduce((s, i) => s + i.unitPrice * i.qty, 0))}) → pedido ${number}` : ""}` });
+  await logAudit({ staff, action: "STATUS", entity: "Mala HUX", entityId: malaId, summary: `Acerto da mala de ${mala.customerName}: ${bought.length} comprou, ${returned.length} devolveu${number ? ` (${PAYMENT_METHOD_LABELS[paymentMethod] ?? paymentMethod}${isAprazo ? `, entrada ${formatCents(entrada)} + ${plan.length}x` : ""}, ${formatCents(boughtSubtotal)}) → pedido ${number}` : ""}` });
   revalidatePath("/backoffice/mala");
   revalidatePath("/backoffice/estoque");
   revalidatePath("/backoffice/pedidos");
