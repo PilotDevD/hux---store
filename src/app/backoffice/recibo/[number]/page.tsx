@@ -125,6 +125,23 @@ export default async function ReciboPage({ params }: { params: Promise<{ number:
               <p className="mt-1 font-semibold">{PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}</p>
               {order.paidAt && <p className="text-sm text-neutral-500">Pago em {formatDateTime(order.paidAt)}</p>}
 
+              {/* Venda dividida / estornos — detalhamento por forma */}
+              {order.payments.length > 1 && (
+                <div className="mt-2 space-y-1 border-t border-neutral-200 pt-2 text-sm">
+                  {order.payments.map((p) => (
+                    <div key={p.id} className="flex items-center justify-between">
+                      <span className={p.kind === "ESTORNO" ? "text-red-600" : "text-neutral-600"}>
+                        {p.kind === "ESTORNO" ? "Estorno · " : ""}{PAYMENT_METHOD_LABELS[p.method] ?? p.method}
+                        {p.method === "CARTAO" && p.installments && p.installments > 1 ? ` ${p.installments}x` : ""}
+                      </span>
+                      <span className={p.kind === "ESTORNO" ? "font-medium text-red-600" : "font-medium"}>
+                        {p.kind === "ESTORNO" ? "−" : ""}{formatCents(p.amount)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {order.installments.length > 0 && (
                 <table className="mt-3 w-full text-sm">
                   <thead>

@@ -36,6 +36,11 @@ export type OrderView = {
     id: string; seq: number; amount: number; dueDate: Date; status: string;
     linha: string | null; paidAt: Date | null;
   }[];
+  /** Pagamentos por forma (venda dividida + estornos). Vazio em pedidos antigos. */
+  payments: {
+    id: string; kind: string; method: string; amount: number;
+    installments: number | null; note: string | null; createdAt: Date;
+  }[];
 };
 
 function toView(o: NonNullable<Awaited<ReturnType<typeof loadOrder>>>): OrderView {
@@ -71,6 +76,10 @@ function toView(o: NonNullable<Awaited<ReturnType<typeof loadOrder>>>): OrderVie
       id: i.id, seq: i.seq, amount: i.amount, dueDate: i.dueDate,
       status: i.status, linha: i.linha, paidAt: i.paidAt,
     })),
+    payments: o.payments.map((p) => ({
+      id: p.id, kind: p.kind, method: p.method, amount: p.amount,
+      installments: p.installments, note: p.note, createdAt: p.createdAt,
+    })),
   };
 }
 
@@ -81,6 +90,7 @@ function loadOrder(where: { number: string } | { id: string }) {
       items: true,
       events: { orderBy: { createdAt: "asc" } },
       installments: { orderBy: { seq: "asc" } },
+      payments: { orderBy: { createdAt: "asc" } },
     },
   });
 }

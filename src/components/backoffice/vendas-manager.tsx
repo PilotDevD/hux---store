@@ -54,6 +54,11 @@ export function VendasManager({
   const [downPayment, setDownPayment] = useState("");
   const [aprazoParcelas, setAprazoParcelas] = useState("2");
   const [firstDueDate, setFirstDueDate] = useState("");
+  // Pagamento dividido (item 2)
+  const [splitRows, setSplitRows] = useState<{ method: string; amount: string; installments: string }[]>([
+    { method: "DINHEIRO", amount: "", installments: "1" },
+    { method: "CARTAO", amount: "", installments: "1" },
+  ]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -108,7 +113,16 @@ export function VendasManager({
   function add(v: VariantOption) { setCart((c) => (c.some((x) => x.v.id === v.id) ? c : [...c, { v, qty: 1 }])); setSearch(""); }
   function setQty(id: string, qty: number) { setCart((c) => c.map((x) => (x.v.id === id ? { ...x, qty: Math.max(1, Math.min(x.v.stock, qty)) } : x))); }
   function resetCustomer() { setSelectedCustomer(null); setCustSearch(""); setNewMode(false); setNewName(""); setNewPhone(""); setNewEmail(""); }
-  function reset() { resetCustomer(); setMethod("DINHEIRO"); setInstallments("1"); setDiscount(""); setNote(""); setCart([]); setSearch(""); setDownPayment(""); setAprazoParcelas("2"); setFirstDueDate(""); setCouponInput(""); setCoupon(null); setMachineId(""); setCashbackUse(""); }
+  function reset() { resetCustomer(); setMethod("DINHEIRO"); setInstallments("1"); setDiscount(""); setNote(""); setCart([]); setSearch(""); setDownPayment(""); setAprazoParcelas("2"); setFirstDueDate(""); setCouponInput(""); setCoupon(null); setMachineId(""); setCashbackUse(""); setSplitRows([{ method: "DINHEIRO", amount: "", installments: "1" }, { method: "CARTAO", amount: "", installments: "1" }]); }
+
+  // Pagamento dividido: soma e saldo restante.
+  const isSplit = method === "MULTIPLO";
+  const splitSumCents = splitRows.reduce((s, r) => s + toCents(r.amount), 0);
+  const splitRemainingCents = totalCents - splitSumCents;
+  const setSplitRow = (i: number, k: "method" | "amount" | "installments", v: string) =>
+    setSplitRows((rows) => rows.map((r, idx) => (idx === i ? { ...r, [k]: v } : r)));
+  const addSplitRow = () => setSplitRows((rows) => [...rows, { method: "PIX_MANUAL", amount: "", installments: "1" }]);
+  const removeSplitRow = (i: number) => setSplitRows((rows) => rows.length > 2 ? rows.filter((_, idx) => idx !== i) : rows);
 
   async function applyCoupon() {
     const code = couponInput.trim();
@@ -128,6 +142,11 @@ export function VendasManager({
     if (!selectedCustomer && (!newMode || newName.trim().length < 2)) return toast("Selecione um cliente da base ou cadastre um novo.", "error");
     if (couponBelowMin) return toast("Subtotal abaixo do mínimo do cupom. Remova o cupom ou ajuste os itens.", "error");
     if (method === "A_PRAZO" && financedCents <= 0) return toast("Na venda a prazo, a entrada deve ser menor que o total.", "error");
+    if (isSplit) {
+      const filled = splitRows.filter((r) => toCents(r.amount) > 0);
+      if (filled.length < 2) return toast("No pagamento dividido, informe ao menos 2 formas com valor.", "error");
+      if (splitRemainingCents !== 0) return toast(`A soma das formas deve ser igual ao total (${formatCents(totalCents)}).`, "error");
+    }
     setBusy(true);
     const res = await createManualSaleAction({
       customerId: selectedCustomer?.id,
@@ -136,11 +155,14 @@ export function VendasManager({
       customerEmail: selectedCustomer ? undefined : newEmail,
       sellerId, paymentMethod: method as never,
       cardInstallments: method === "CARTAO" ? Number(installments) || 1 : undefined,
+      payments: isSplit
+        ? splitRows.filter((r) => toCents(r.amount) > 0).map((r) => ({ method: r.method as never, amount: r.amount, installments: r.method === "CARTAO" ? Number(r.installments) || 1 : undefined }))
+        : undefined,
       downPayment: method === "A_PRAZO" ? downPayment : undefined,
       aprazoParcelas: method === "A_PRAZO" ? nParcelas : undefined,
       firstDueDate: method === "A_PRAZO" && firstDueDate ? firstDueDate : undefined,
       couponCode: coupon?.code,
-      cardMachineId: machine ? machine.id : undefined,
+      cardMachineId: machine && !isSplit ? machine.id : undefined,
       cashbackUse: cashbackCents > 0 ? cashbackUse : undefined,
       discount, note, items: cart.map((x) => ({ variantId: x.v.id, qty: x.qty })),
     });
@@ -209,6 +231,7 @@ export function VendasManager({
             <label><span className={label}>Forma de pagamento</span>
               <select className="field" value={method} onChange={(e) => setMethod(e.target.value)}>
                 {MANUAL_PAYMENT_METHODS.map((m) => <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</option>)}
+                <option value="MULTIPLO">{PAYMENT_METHOD_LABELS.MULTIPLO}</option>
               </select>
             </label>
             {method === "CARTAO" && (
@@ -220,6 +243,41 @@ export function VendasManager({
             )}
             <label><span className={label}>Desconto (R$)</span><input className="field" value={discount} onChange={(e) => setDiscount(e.target.value)} placeholder="0,00" inputMode="decimal" /></label>
           </div>
+
+          {/* Pagamento dividido (item 2) */}
+          {isSplit && (
+            <div className="rounded-[var(--radius)] border border-line p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className={label + " !mb-0"}>Formas de pagamento (dividido)</span>
+                <button type="button" onClick={addSplitRow} className="btn btn-ghost px-2.5 py-1.5 text-xs"><Plus size={13} /> Forma</button>
+              </div>
+              <div className="space-y-2">
+                {splitRows.map((r, i) => (
+                  <div key={i} className="flex flex-wrap items-center gap-2">
+                    <select className="field w-40 py-2 text-sm" value={r.method} onChange={(e) => setSplitRow(i, "method", e.target.value)}>
+                      {(["DINHEIRO", "PIX_MANUAL", "DEBITO", "CARTAO"] as const).map((m) => <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</option>)}
+                    </select>
+                    <input className="field w-28 py-2 text-sm" value={r.amount} onChange={(e) => setSplitRow(i, "amount", e.target.value)} placeholder="0,00" inputMode="decimal" />
+                    {r.method === "CARTAO" && (
+                      <select className="field w-20 py-2 text-sm" value={r.installments} onChange={(e) => setSplitRow(i, "installments", e.target.value)} title="Parcelas">
+                        {Array.from({ length: 12 }, (_, n) => n + 1).map((n) => <option key={n} value={n}>{n}x</option>)}
+                      </select>
+                    )}
+                    <button type="button" onClick={() => { const rest = splitRemainingCents + toCents(r.amount); setSplitRow(i, "amount", (Math.max(0, rest) / 100).toFixed(2).replace(".", ",")); }} className="btn btn-ghost px-2 py-1.5 text-[0.7rem]" title="Preencher com o restante">restante</button>
+                    {splitRows.length > 2 && (
+                      <button type="button" onClick={() => removeSplitRow(i)} className="text-faint hover:text-negative"><X size={15} /></button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 flex items-center justify-between text-xs">
+                <span className="text-muted">Soma: <strong className={cn(splitRemainingCents === 0 ? "text-positive" : "text-ink")}>{formatCents(splitSumCents)}</strong> / {formatCents(totalCents)}</span>
+                <span className={cn("font-semibold", splitRemainingCents === 0 ? "text-positive" : splitRemainingCents > 0 ? "text-warning" : "text-negative")}>
+                  {splitRemainingCents === 0 ? "✓ confere" : splitRemainingCents > 0 ? `faltam ${formatCents(splitRemainingCents)}` : `excede ${formatCents(-splitRemainingCents)}`}
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Cupom de desconto */}
           <div className="rounded-[var(--radius)] border border-line p-3">

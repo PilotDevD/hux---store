@@ -127,7 +127,11 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   DINHEIRO: "Dinheiro",
   DEBITO: "Cartão de débito",
   A_PRAZO: "A prazo (crediário)",
+  MULTIPLO: "Pagamento dividido",
 };
+
+// Formas aceitas em um pagamento dividido (à vista; "a prazo" tem fluxo próprio).
+export const SPLIT_PAYMENT_METHODS = ["DINHEIRO", "PIX_MANUAL", "DEBITO", "CARTAO"] as const;
 
 // Methods available when a staff member registers a physical/manual sale.
 export const MANUAL_PAYMENT_METHODS = ["DINHEIRO", "PIX_MANUAL", "DEBITO", "CARTAO", "A_PRAZO"] as const;

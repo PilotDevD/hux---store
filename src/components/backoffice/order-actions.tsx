@@ -2,22 +2,33 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, PackageCheck, Truck, Home, XCircle, Loader2 } from "lucide-react";
+import { CheckCircle2, PackageCheck, Truck, Home, XCircle, Loader2, Undo2, RefreshCw } from "lucide-react";
 import {
   confirmPaymentAction, setOrderStatusAction, shipOrderAction, cancelOrderAction,
+  refundOrderPaymentAction, changeOrderPaymentMethodAction,
 } from "@/app/actions/backoffice-orders";
 import { settleOrderBoletosAction } from "@/app/actions/backoffice-boletos";
 import { useToast } from "@/components/ui/toast";
+import { formatCents } from "@/lib/money";
+import { PAYMENT_METHOD_LABELS, SPLIT_PAYMENT_METHODS } from "@/lib/enums";
 import { Barcode } from "lucide-react";
+
+type PayRow = { kind: string; method: string; amount: number };
 
 export function OrderActions({
   number,
   status,
   paymentMethod = "PIX_MANUAL",
+  paymentStatus = "CONFIRMADO",
+  total = 0,
+  payments = [],
 }: {
   number: string;
   status: string;
   paymentMethod?: string;
+  paymentStatus?: string;
+  total?: number;
+  payments?: PayRow[];
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -25,6 +36,24 @@ export function OrderActions({
   const [tracking, setTracking] = useState("");
   const [reason, setReason] = useState("");
   const [showCancel, setShowCancel] = useState(false);
+  const [showRefund, setShowRefund] = useState(false);
+  const [refundMethod, setRefundMethod] = useState("");
+  const [refundAmount, setRefundAmount] = useState("");
+  const [showChange, setShowChange] = useState(false);
+  const [changeMethod, setChangeMethod] = useState("");
+
+  // Saldo líquido por forma (recebido - estornado). Para pedidos antigos sem
+  // linhas, assume o total na forma principal.
+  const netByMethod = new Map<string, number>();
+  if (payments.length > 0) {
+    for (const p of payments) netByMethod.set(p.method, (netByMethod.get(p.method) ?? 0) + (p.kind === "ESTORNO" ? -p.amount : p.amount));
+  } else if ((SPLIT_PAYMENT_METHODS as readonly string[]).includes(paymentMethod)) {
+    netByMethod.set(paymentMethod, total);
+  }
+  const refundable = [...netByMethod.entries()].filter(([, v]) => v > 0);
+  const isSplit = paymentMethod === "MULTIPLO" || payments.filter((p) => p.kind === "PAGAMENTO").length > 1;
+  const canChangeMethod = status !== "CANCELADO" && paymentMethod !== "A_PRAZO" && !isSplit && paymentStatus === "CONFIRMADO";
+  const canRefund = status !== "CANCELADO" && paymentStatus === "CONFIRMADO" && refundable.length > 0;
 
   function run(fn: () => Promise<{ ok: boolean; error?: string }>, okMsg: string) {
     start(async () => {
@@ -101,6 +130,62 @@ export function OrderActions({
           >
             <Home size={16} /> Confirmar entrega
           </button>
+        )}
+
+        {/* Alterar forma de pagamento (item 2) */}
+        {canChangeMethod && (
+          showChange ? (
+            <div className="space-y-2 rounded-[var(--radius)] border border-line p-3">
+              <label className="data-label text-muted">Nova forma de pagamento</label>
+              <select className="field py-2.5" value={changeMethod} onChange={(e) => setChangeMethod(e.target.value)}>
+                <option value="">— escolher —</option>
+                {SPLIT_PAYMENT_METHODS.filter((m) => m !== paymentMethod).map((m) => <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</option>)}
+              </select>
+              <div className="flex gap-2">
+                <button
+                  disabled={pending || !changeMethod}
+                  onClick={() => run(() => changeOrderPaymentMethodAction(number, changeMethod), "Forma de pagamento alterada.")}
+                  className="btn btn-primary flex-1 disabled:opacity-40"
+                >
+                  {pending ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />} Salvar
+                </button>
+                <button onClick={() => { setShowChange(false); setChangeMethod(""); }} className="btn btn-ghost">Voltar</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setShowChange(true)} className={`${btn} btn-ghost`}>
+              <RefreshCw size={16} /> Alterar forma de pagamento
+            </button>
+          )
+        )}
+
+        {/* Estorno parcial por forma (item 10) */}
+        {canRefund && (
+          showRefund ? (
+            <div className="space-y-2 rounded-[var(--radius)] border border-negative/30 p-3">
+              <label className="data-label text-muted">Estornar — forma e valor</label>
+              <select className="field py-2.5" value={refundMethod} onChange={(e) => setRefundMethod(e.target.value)}>
+                <option value="">— forma —</option>
+                {refundable.map(([m, v]) => <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m] ?? m} (disp. {formatCents(v)})</option>)}
+              </select>
+              <input className="field py-2.5" value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} placeholder="Valor a estornar (R$)" inputMode="decimal" />
+              <div className="flex gap-2">
+                <button
+                  disabled={pending || !refundMethod || !refundAmount.trim()}
+                  onClick={() => run(() => refundOrderPaymentAction(number, refundMethod, refundAmount), "Estorno registrado.")}
+                  className="btn btn-ghost flex-1 border-negative/40 text-negative hover:bg-negative/10 disabled:opacity-40"
+                >
+                  {pending ? <Loader2 size={15} className="animate-spin" /> : <Undo2 size={15} />} Confirmar estorno
+                </button>
+                <button onClick={() => { setShowRefund(false); setRefundMethod(""); setRefundAmount(""); }} className="btn btn-ghost">Voltar</button>
+              </div>
+              <p className="text-xs text-faint">Estorna um valor numa forma (ex.: só a parte do cartão). Dinheiro sai do caixa. Ao estornar o total, a venda vira ESTORNADA.</p>
+            </div>
+          ) : (
+            <button onClick={() => setShowRefund(true)} className={`${btn} btn-ghost text-negative`}>
+              <Undo2 size={16} /> Estornar pagamento
+            </button>
+          )
         )}
 
         {status !== "CANCELADO" && (

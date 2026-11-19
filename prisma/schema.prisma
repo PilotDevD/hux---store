@@ -290,9 +290,32 @@ model Order {
   events    OrderEvent[]
   installments Installment[]
   returns   ReturnRequest[]
+  payments  OrderPayment[]
 
   @@index([customerId])
   @@index([status])
+}
+
+// Pagamento de um pedido por forma. Permite venda com pagamento DIVIDIDO
+// (dinheiro + cartão + pix…), cada forma com seu valor. Estornos entram como
+// linhas kind=ESTORNO (reduzem o recebido naquela forma). Quando um pedido tem
+// linhas aqui, elas são a fonte de verdade das formas; senão usa-se
+// order.paymentMethod (pedidos antigos / a prazo).
+model OrderPayment {
+  id           String   @id @default(cuid())
+  orderId      String
+  kind         String   @default("PAGAMENTO") // PAGAMENTO | ESTORNO
+  method       String   // DINHEIRO | PIX_MANUAL | DEBITO | CARTAO
+  amount       Int      // cents (sempre positivo)
+  installments Int?     // parcelas do cartão, quando aplicável
+  note         String?
+  userId       String?
+  userName     String?
+  createdAt    DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
 }
 
 // ----------------------------- Trocas & devoluções --------------------------

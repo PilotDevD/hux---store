@@ -316,11 +316,26 @@ export async function transitionOrder(
         where: { orderId, status: "PENDENTE" },
         data: { status: "CANCELADO" },
       });
-      // Caixa: se a venda foi recebida em dinheiro, estorna a saída no caixa.
-      if (order.paymentMethod === "DINHEIRO" && order.paymentStatus === "CONFIRMADO" && order.total > 0) {
-        await tx.cashEntry.create({
-          data: { kind: "SAIDA", amount: order.total, note: `Estorno — cancelamento ${order.number}`, userId: opts.staffId ?? null },
-        });
+      // Estorno dos pagamentos (inclui venda com pagamento dividido): para cada
+      // forma, estorna o saldo líquido ainda não estornado. A parte em dinheiro
+      // sai do caixa. Pedidos antigos (sem linhas de pagamento) usam o total.
+      if (order.paymentStatus === "CONFIRMADO" && order.total > 0) {
+        const pays = await tx.orderPayment.findMany({ where: { orderId } });
+        if (pays.length > 0) {
+          const net = new Map<string, number>(); // por forma: recebido - estornado
+          for (const p of pays) net.set(p.method, (net.get(p.method) ?? 0) + (p.kind === "ESTORNO" ? -p.amount : p.amount));
+          for (const [method, amount] of net) {
+            if (amount <= 0) continue;
+            await tx.orderPayment.create({ data: { orderId, kind: "ESTORNO", method, amount, note: `Cancelamento ${order.number}`, userId: opts.staffId ?? null } });
+            if (method === "DINHEIRO") {
+              await tx.cashEntry.create({ data: { kind: "SAIDA", amount, note: `Estorno — cancelamento ${order.number} (dinheiro)`, userId: opts.staffId ?? null } });
+            }
+          }
+        } else if (order.paymentMethod === "DINHEIRO") {
+          await tx.cashEntry.create({
+            data: { kind: "SAIDA", amount: order.total, note: `Estorno — cancelamento ${order.number}`, userId: opts.staffId ?? null },
+          });
+        }
       }
     }
 

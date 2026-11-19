@@ -11,7 +11,7 @@ import { ambassadorByEmail, ambassadorBalance } from "@/lib/cashback";
 import { feeForSale, netAfterFee, type InstallmentFee } from "@/lib/card-machine-fee";
 import { parseReaisToCents, formatCents } from "@/lib/money";
 import { onlyDigits, parseJson, parseDateInput } from "@/lib/utils";
-import { MANUAL_PAYMENT_METHODS } from "@/lib/enums";
+import { MANUAL_PAYMENT_METHODS, SPLIT_PAYMENT_METHODS } from "@/lib/enums";
 
 /** Validate a coupon for a physical sale (no customer, no shipping). */
 export async function validateSaleCouponAction(
@@ -55,8 +55,14 @@ const schema = z.object({
   customerPhone: z.string().optional(),
   customerEmail: z.string().optional(),
   sellerId: z.string().optional(),
-  paymentMethod: z.enum(MANUAL_PAYMENT_METHODS),
+  paymentMethod: z.enum([...MANUAL_PAYMENT_METHODS, "MULTIPLO"]),
   cardInstallments: z.coerce.number().int().min(1).max(12).optional(),
+  // Pagamento dividido (item 2): quando paymentMethod === "MULTIPLO".
+  payments: z.array(z.object({
+    method: z.enum(SPLIT_PAYMENT_METHODS),
+    amount: z.string(),
+    installments: z.coerce.number().int().min(1).max(12).optional(),
+  })).optional(),
   discount: z.string().optional(),
   couponCode: z.string().optional(),
   cardMachineId: z.string().optional(),
@@ -137,11 +143,13 @@ export async function createManualSaleAction(input: z.input<typeof schema>): Pro
   }
   total = total - cashbackApplied;
 
-  // --- maquininha: taxa + líquido ---
+  const isSplit = d.paymentMethod === "MULTIPLO";
+
+  // --- maquininha: taxa + líquido (apenas em venda de forma única) ---
   let cardMachineId: string | null = null;
   let cardFeePct: number | null = null;
   let netReceived: number | null = null;
-  if (d.cardMachineId) {
+  if (d.cardMachineId && !isSplit) {
     const m = await db.cardMachine.findUnique({ where: { id: d.cardMachineId } });
     if (m && m.active) {
       const opt = { id: m.id, name: m.name, provider: m.provider, debitFee: m.debitFee, creditFee: m.creditFee, pixFee: m.pixFee, installmentFees: parseJson<InstallmentFee[]>(m.installmentFees, []) };
@@ -156,6 +164,24 @@ export async function createManualSaleAction(input: z.input<typeof schema>): Pro
 
   // --- a prazo (crediário) setup ---
   const isAprazo = d.paymentMethod === "A_PRAZO";
+
+  // --- pagamento dividido (item 2) ---
+  // payRows = as formas efetivas do pedido. Para forma única (não a prazo),
+  // gravamos 1 linha = total, assim recibo/relatórios leem sempre de OrderPayment.
+  let payRows: { method: string; amount: number; installments: number | null }[] = [];
+  if (isSplit) {
+    const rows = (d.payments ?? [])
+      .map((p) => ({ method: p.method, amount: parseReaisToCents(p.amount), installments: p.method === "CARTAO" ? (p.installments ?? 1) : null }))
+      .filter((r) => r.amount > 0);
+    if (rows.length < 2) return { ok: false, error: "No pagamento dividido, informe ao menos 2 formas com valor." };
+    const sum = rows.reduce((s, r) => s + r.amount, 0);
+    if (sum !== total) return { ok: false, error: `A soma das formas (${formatCents(sum)}) deve ser igual ao total da venda (${formatCents(total)}).` };
+    payRows = rows;
+  } else if (!isAprazo) {
+    payRows = [{ method: d.paymentMethod, amount: total, installments: d.paymentMethod === "CARTAO" ? (d.cardInstallments ?? 1) : null }];
+  }
+  const cashPortion = payRows.filter((r) => r.method === "DINHEIRO").reduce((s, r) => s + r.amount, 0);
+  const splitCardInstallments = isSplit ? (payRows.find((r) => r.method === "CARTAO")?.installments ?? null) : null;
   let entrada = 0;
   let aprazoPlan: { seq: number; amount: number; dueDate: Date }[] = [];
   if (isAprazo) {
@@ -194,7 +220,7 @@ export async function createManualSaleAction(input: z.input<typeof schema>): Pro
           status: isAprazo ? "ENTREGUE" : "PAGO",
           paymentMethod: d.paymentMethod,
           paymentStatus: isAprazo ? "PENDENTE" : "CONFIRMADO",
-          cardInstallments: d.paymentMethod === "CARTAO" ? (d.cardInstallments ?? 1) : null,
+          cardInstallments: d.paymentMethod === "CARTAO" ? (d.cardInstallments ?? 1) : splitCardInstallments,
           downPayment: isAprazo ? entrada : 0,
           couponId, couponCode,
           cashbackUsed: cashbackApplied, cashbackAmbassadorId,
@@ -217,15 +243,19 @@ export async function createManualSaleAction(input: z.input<typeof schema>): Pro
           installments: isAprazo && aprazoPlan.length
             ? { create: aprazoPlan.map((p) => ({ seq: p.seq, amount: p.amount, dueDate: p.dueDate, status: "PENDENTE" })) }
             : undefined,
+          payments: payRows.length
+            ? { create: payRows.map((r) => ({ kind: "PAGAMENTO", method: r.method, amount: r.amount, installments: r.installments, userId: staff.id, userName: staff.displayName })) }
+            : undefined,
         },
       });
       if (couponId) {
         await tx.coupon.update({ where: { id: couponId }, data: { usedCount: { increment: 1 } } });
       }
-      // Caixa: venda em dinheiro entra automaticamente no caixa físico.
-      if (!isAprazo && d.paymentMethod === "DINHEIRO" && total > 0) {
+      // Caixa: a parcela em dinheiro da venda entra automaticamente no caixa físico
+      // (em venda dividida, só a parte paga em dinheiro).
+      if (!isAprazo && cashPortion > 0) {
         await tx.cashEntry.create({
-          data: { kind: "ENTRADA", amount: total, note: `Venda ${number} (dinheiro)`, userId: staff.id, userName: staff.displayName },
+          data: { kind: "ENTRADA", amount: cashPortion, note: `Venda ${number} (dinheiro)`, userId: staff.id, userName: staff.displayName },
         });
       }
     });
@@ -236,7 +266,9 @@ export async function createManualSaleAction(input: z.input<typeof schema>): Pro
     staff, action: "SALE", entity: "Venda", entityId: number,
     summary: isAprazo
       ? `Venda a prazo ${number} — ${snapName} (${formatCents(total)}, entrada ${formatCents(entrada)}, ${aprazoPlan.length}x), vendedor ${seller.displayName}`
-      : `Venda física ${number} — ${snapName} (${formatCents(total)}, ${d.paymentMethod === "DINHEIRO" ? "dinheiro" : d.paymentMethod.toLowerCase()}${cashbackApplied > 0 ? `, cashback ${formatCents(cashbackApplied)}` : ""}), vendedor ${seller.displayName}`,
+      : isSplit
+        ? `Venda física ${number} — ${snapName} (${formatCents(total)}, dividido: ${payRows.map((r) => `${r.method.toLowerCase()} ${formatCents(r.amount)}`).join(" + ")}${cashbackApplied > 0 ? `, cashback ${formatCents(cashbackApplied)}` : ""}), vendedor ${seller.displayName}`
+        : `Venda física ${number} — ${snapName} (${formatCents(total)}, ${d.paymentMethod === "DINHEIRO" ? "dinheiro" : d.paymentMethod.toLowerCase()}${cashbackApplied > 0 ? `, cashback ${formatCents(cashbackApplied)}` : ""}), vendedor ${seller.displayName}`,
   });
   revalidatePath("/backoffice/clientes");
   revalidatePath("/backoffice/vendas");

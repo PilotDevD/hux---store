@@ -5,7 +5,7 @@ import { ChevronLeft, MessageCircle, Mail, User, CreditCard, FileText } from "lu
 import { guardModule } from "@/lib/bo-guard";
 import { db } from "@/lib/db";
 import { getOrderForStaff } from "@/lib/order-queries";
-import { formatDate, formatDateTime, onlyDigits } from "@/lib/utils";
+import { formatDate, formatDateTime, onlyDigits, cn } from "@/lib/utils";
 import { formatCents } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS } from "@/lib/enums";
 import { OrderStatusBadge, Badge } from "@/components/ui/badge";
@@ -57,7 +57,14 @@ export default async function BoOrderDetail({ params }: { params: Promise<{ numb
         </div>
 
         <div className="space-y-6">
-          <OrderActions number={order.number} status={order.status} paymentMethod={order.paymentMethod} />
+          <OrderActions
+            number={order.number}
+            status={order.status}
+            paymentMethod={order.paymentMethod}
+            paymentStatus={order.paymentStatus}
+            total={order.total}
+            payments={order.payments.map((p) => ({ kind: p.kind, method: p.method, amount: p.amount }))}
+          />
 
           <a
             href={`/backoffice/recibo/${order.number}`}
@@ -75,6 +82,21 @@ export default async function BoOrderDetail({ params }: { params: Promise<{ numb
               <span className="text-muted">Método</span>
               <span className="font-medium">{PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}</span>
             </div>
+            {order.payments.length > 1 && (
+              <div className="mt-2 space-y-1 border-t border-line pt-2 text-sm">
+                {order.payments.map((p) => (
+                  <div key={p.id} className="flex items-center justify-between">
+                    <span className={p.kind === "ESTORNO" ? "text-negative" : "text-muted"}>
+                      {p.kind === "ESTORNO" ? "Estorno · " : ""}{PAYMENT_METHOD_LABELS[p.method] ?? p.method}
+                      {p.method === "CARTAO" && p.installments && p.installments > 1 ? ` ${p.installments}x` : ""}
+                    </span>
+                    <span className={cn("font-medium", p.kind === "ESTORNO" && "text-negative")}>
+                      {p.kind === "ESTORNO" ? "−" : ""}{formatCents(p.amount)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="mt-2 flex items-center justify-between text-sm">
               <span className="text-muted">Status</span>
               <Badge tone={paid ? "success" : order.paymentStatus === "ESTORNADO" ? "danger" : "warning"}>

@@ -6,8 +6,10 @@ import { requireModule } from "@/lib/auth";
 import { transitionOrder } from "@/lib/orders";
 import { validateCoupon } from "@/lib/coupon";
 import { logAudit } from "@/lib/audit";
-import { formatCents } from "@/lib/money";
-import { isOrderStatus, ORDER_STATUS_LABELS, type OrderStatus } from "@/lib/enums";
+import { formatCents, parseReaisToCents } from "@/lib/money";
+import { isOrderStatus, ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS, SPLIT_PAYMENT_METHODS, type OrderStatus } from "@/lib/enums";
+
+const payLabel = (m: string) => PAYMENT_METHOD_LABELS[m] ?? m;
 
 async function findOrder(number: string) {
   return db.order.findUnique({ where: { number } });
@@ -144,6 +146,105 @@ export async function changeOrderSellerAction(
 
   await db.order.update({ where: { id: order.id }, data: { soldByUserId: seller.id, soldByName: seller.displayName } });
   await logAudit({ staff, action: "UPDATE", entity: "Pedido", entityId: number, summary: `Alterou o vendedor do pedido ${number} → ${seller.displayName}` });
+  revalidatePath(`/backoffice/pedidos/${number}`);
+  revalidatePath("/backoffice/vendas");
+  revalidatePath("/backoffice");
+  return { ok: true };
+}
+
+/**
+ * Estorno PARCIAL por forma de pagamento (item 10). Registra um estorno de um
+ * valor em uma forma específica (ex.: estornar só a parte do cartão de uma
+ * venda dividida). A parte em dinheiro sai do caixa. Quando o total estornado
+ * atinge o total do pedido, a venda passa a ESTORNADO.
+ */
+export async function refundOrderPaymentAction(
+  number: string,
+  method: string,
+  amountReais: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const staff = await requireModule("pedidos");
+  if (!(SPLIT_PAYMENT_METHODS as readonly string[]).includes(method)) return { ok: false, error: "Forma de pagamento inválida para estorno." };
+  const order = await db.order.findUnique({ where: { number }, include: { payments: true } });
+  if (!order) return { ok: false, error: "Pedido não encontrado." };
+  if (order.paymentStatus !== "CONFIRMADO") return { ok: false, error: "Só é possível estornar vendas com pagamento confirmado." };
+  const amount = parseReaisToCents(amountReais);
+  if (amount <= 0) return { ok: false, error: "Informe um valor maior que zero." };
+
+  // Saldo líquido disponível para estorno nessa forma.
+  const hasRows = order.payments.length > 0;
+  const netForMethod = order.payments.filter((p) => p.method === method).reduce((s, p) => s + (p.kind === "ESTORNO" ? -p.amount : p.amount), 0);
+  const available = hasRows ? netForMethod : (order.paymentMethod === method ? order.total : 0);
+  if (available <= 0) return { ok: false, error: `Não há valor a estornar em ${payLabel(method)} neste pedido.` };
+  if (amount > available) return { ok: false, error: `Máximo estornável em ${payLabel(method)}: ${formatCents(available)}.` };
+
+  try {
+    await db.$transaction(async (tx) => {
+      // Normaliza pedidos antigos (sem linhas de pagamento): cria a linha base.
+      if (!hasRows) {
+        await tx.orderPayment.create({ data: { orderId: order.id, kind: "PAGAMENTO", method: order.paymentMethod, amount: order.total, userId: staff.id, userName: staff.displayName } });
+      }
+      await tx.orderPayment.create({ data: { orderId: order.id, kind: "ESTORNO", method, amount, note: "Estorno parcial", userId: staff.id, userName: staff.displayName } });
+      if (method === "DINHEIRO") {
+        await tx.cashEntry.create({ data: { kind: "SAIDA", amount, note: `Estorno ${number} (dinheiro)`, userId: staff.id, userName: staff.displayName } });
+      }
+      await tx.orderEvent.create({ data: { orderId: order.id, status: order.status, note: `Estorno de ${formatCents(amount)} em ${payLabel(method)}.` } });
+
+      // Se o total estornado alcançou o total do pedido, marca como ESTORNADO.
+      const rows = await tx.orderPayment.findMany({ where: { orderId: order.id } });
+      const estornado = rows.filter((p) => p.kind === "ESTORNO").reduce((s, p) => s + p.amount, 0);
+      if (estornado >= order.total) {
+        await tx.order.update({ where: { id: order.id }, data: { paymentStatus: "ESTORNADO" } });
+      }
+    });
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Erro ao estornar." };
+  }
+  await logAudit({ staff, action: "PAYMENT", entity: "Pedido", entityId: number, summary: `Estornou ${formatCents(amount)} em ${payLabel(method)} do pedido ${number}`, meta: { method, amount } });
+  revalidatePath(`/backoffice/pedidos/${number}`);
+  revalidatePath("/backoffice/vendas");
+  revalidatePath("/backoffice");
+  return { ok: true };
+}
+
+/**
+ * Alterar a forma de pagamento de uma venda de forma única (item 2). Ajusta o
+ * caixa quando troca de/para dinheiro. Não se aplica a venda a prazo nem a
+ * venda com pagamento dividido (use os estornos nesses casos).
+ */
+export async function changeOrderPaymentMethodAction(
+  number: string,
+  method: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const staff = await requireModule("pedidos");
+  if (!(SPLIT_PAYMENT_METHODS as readonly string[]).includes(method)) return { ok: false, error: "Forma de pagamento inválida." };
+  const order = await db.order.findUnique({ where: { number }, include: { payments: true, installments: true } });
+  if (!order) return { ok: false, error: "Pedido não encontrado." };
+  if (order.status === "CANCELADO") return { ok: false, error: "Pedido cancelado." };
+  if (order.paymentMethod === "A_PRAZO" || order.installments.length > 0) return { ok: false, error: "Venda a prazo não permite trocar a forma aqui." };
+  const payMethods = new Set(order.payments.filter((p) => p.kind === "PAGAMENTO").map((p) => p.method));
+  if (order.paymentMethod === "MULTIPLO" || payMethods.size > 1) return { ok: false, error: "Venda com pagamento dividido: ajuste pelos estornos por forma." };
+  if (order.paymentMethod === method) return { ok: false, error: "A venda já está nessa forma de pagamento." };
+
+  const old = order.paymentMethod;
+  const confirmed = order.paymentStatus === "CONFIRMADO";
+  try {
+    await db.$transaction(async (tx) => {
+      // Ajuste de caixa: remove entrada antiga se era dinheiro; adiciona se passou a dinheiro.
+      if (confirmed && order.total > 0) {
+        if (old === "DINHEIRO") await tx.cashEntry.create({ data: { kind: "SAIDA", amount: order.total, note: `Troca de forma — ${number} (saiu dinheiro)`, userId: staff.id, userName: staff.displayName } });
+        if (method === "DINHEIRO") await tx.cashEntry.create({ data: { kind: "ENTRADA", amount: order.total, note: `Troca de forma — ${number} (entrou dinheiro)`, userId: staff.id, userName: staff.displayName } });
+      }
+      // Reescreve a linha de pagamento única.
+      await tx.orderPayment.deleteMany({ where: { orderId: order.id } });
+      await tx.orderPayment.create({ data: { orderId: order.id, kind: "PAGAMENTO", method, amount: order.total, installments: null, userId: staff.id, userName: staff.displayName } });
+      await tx.order.update({ where: { id: order.id }, data: { paymentMethod: method, cardInstallments: null } });
+      await tx.orderEvent.create({ data: { orderId: order.id, status: order.status, note: `Forma de pagamento alterada de ${payLabel(old)} para ${payLabel(method)}.` } });
+    });
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Erro ao alterar a forma." };
+  }
+  await logAudit({ staff, action: "UPDATE", entity: "Pedido", entityId: number, summary: `Alterou a forma de pagamento do pedido ${number}: ${payLabel(old)} → ${payLabel(method)}`, meta: { antes: old, depois: method } });
   revalidatePath(`/backoffice/pedidos/${number}`);
   revalidatePath("/backoffice/vendas");
   revalidatePath("/backoffice");
