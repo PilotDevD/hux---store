@@ -6,6 +6,7 @@ import { guardModule } from "@/lib/bo-guard";
 import { parseJson, cn } from "@/lib/utils";
 import { formatCents } from "@/lib/money";
 import { PageHeader, StatCard } from "@/components/backoffice/bo-ui";
+import { BoFilterBar } from "@/components/backoffice/bo-filter-bar";
 import { AprazoManager, type AprazoOrder } from "@/components/backoffice/aprazo-manager";
 
 export const metadata: Metadata = { title: "Vendas a prazo" };
@@ -17,6 +18,7 @@ export default async function AprazoPage({ searchParams }: { searchParams: Promi
   await guardModule("aprazo");
   const sp = await searchParams;
   const f = first(sp.f) ?? "todos";
+  const q = first(sp.q)?.trim().toLowerCase() ?? "";
   const now = new Date();
 
   const orders = await db.order.findMany({
@@ -63,11 +65,14 @@ export default async function AprazoPage({ searchParams }: { searchParams: Promi
   const emAberto = rows.filter((r) => !r.fullyPaid).length;
   const vencidas = rows.reduce((s, r) => s + r.overdueCount, 0);
 
-  const filtered =
+  const byStatus =
     f === "abertas" ? rows.filter((r) => !r.fullyPaid)
     : f === "vencidas" ? rows.filter((r) => r.overdueCount > 0)
     : f === "quitadas" ? rows.filter((r) => r.fullyPaid)
     : rows;
+  const filtered = q
+    ? byStatus.filter((r) => `${r.customerName} ${r.sellerName} ${r.number}`.toLowerCase().includes(q))
+    : byStatus;
 
   const filters = [
     { id: "todos", label: "Todas" },
@@ -91,17 +96,25 @@ export default async function AprazoPage({ searchParams }: { searchParams: Promi
         <StatCard label="Crediários em aberto" value={String(emAberto)} icon={CalendarClock} tone="info" />
       </div>
 
-      <div className="mb-5 flex flex-wrap gap-2">
-        {filters.map((x) => (
-          <Link
-            key={x.id}
-            href={x.id === "todos" ? "/backoffice/a-prazo" : `/backoffice/a-prazo?f=${x.id}`}
-            className={cn("chip transition-colors", f === x.id ? "border-orange bg-orange/10 text-orange" : "hover:border-ink-soft")}
-          >
-            {x.label}
-          </Link>
-        ))}
+      <div className="mb-4 flex flex-wrap gap-2">
+        {filters.map((x) => {
+          const params = new URLSearchParams();
+          if (x.id !== "todos") params.set("f", x.id);
+          if (q) params.set("q", q);
+          const href = params.toString() ? `/backoffice/a-prazo?${params.toString()}` : "/backoffice/a-prazo";
+          return (
+            <Link
+              key={x.id}
+              href={href}
+              className={cn("chip transition-colors", f === x.id ? "border-orange bg-orange/10 text-orange" : "hover:border-ink-soft")}
+            >
+              {x.label}
+            </Link>
+          );
+        })}
       </div>
+
+      <BoFilterBar searchPlaceholder="Buscar por cliente, vendedor ou nº da venda…" />
 
       <AprazoManager orders={filtered} />
     </>

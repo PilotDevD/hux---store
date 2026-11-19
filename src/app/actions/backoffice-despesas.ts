@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { requireModule } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { parseReaisToCents } from "@/lib/money";
+import { parseDateInput } from "@/lib/utils";
 import { EXPENSE_CATEGORIES, EXPENSE_TYPES } from "@/lib/enums";
 
 const schema = z.object({
@@ -24,7 +25,7 @@ export async function createExpenseAction(input: z.input<typeof schema>): Promis
   if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? "Dados inválidos." };
   const e = parsed.data;
   const amount = parseReaisToCents(e.amount);
-  const first = new Date(e.dueDate);
+  const first = parseDateInput(e.dueDate) ?? new Date();
 
   if (e.type === "PARCELADA") {
     const n = Math.max(1, e.installments ?? 1);

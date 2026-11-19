@@ -30,10 +30,15 @@ export function slugify(text: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+// The app runs on UTC servers (Netlify/Neon). HUX opera no horário de Brasília,
+// então formatamos sempre em America/Sao_Paulo para não mostrar hora/data em UTC.
+export const TZ = "America/Sao_Paulo";
+
 const DATE_FMT = new Intl.DateTimeFormat("pt-BR", {
   day: "2-digit",
   month: "2-digit",
   year: "numeric",
+  timeZone: TZ,
 });
 const DATETIME_FMT = new Intl.DateTimeFormat("pt-BR", {
   day: "2-digit",
@@ -41,6 +46,7 @@ const DATETIME_FMT = new Intl.DateTimeFormat("pt-BR", {
   year: "numeric",
   hour: "2-digit",
   minute: "2-digit",
+  timeZone: TZ,
 });
 
 export function formatDate(d: Date | string | null | undefined): string {
@@ -50,6 +56,29 @@ export function formatDate(d: Date | string | null | undefined): string {
 export function formatDateTime(d: Date | string | null | undefined): string {
   if (!d) return "—";
   return DATETIME_FMT.format(new Date(d));
+}
+
+/**
+ * Parse a date-only input ("YYYY-MM-DD" from <input type=date>) as NOON in
+ * Brasília, so timezone shifts never move it to the previous/next day (fixes
+ * "vencimento aparece 1 dia antes"). Returns null for empty/invalid input.
+ */
+export function parseDateInput(v: string | null | undefined): Date | null {
+  if (!v) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v.trim());
+  if (m) {
+    const dt = new Date(`${v}T12:00:00-03:00`);
+    return isNaN(dt.getTime()) ? null : dt;
+  }
+  const dt = new Date(v);
+  return isNaN(dt.getTime()) ? null : dt;
+}
+
+/** Format a Date as "YYYY-MM-DD" in Brasília (for prefilling date inputs). */
+export function toDateInput(d: Date | string | null | undefined): string {
+  if (!d) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(d));
+  return parts; // en-CA gives YYYY-MM-DD
 }
 
 /** "2026-07" month key. */

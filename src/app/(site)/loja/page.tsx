@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { PackageOpen } from "lucide-react";
 import { db } from "@/lib/db";
 import { listProducts, type ProductFilters } from "@/lib/catalog";
+import { getBrandNames } from "@/lib/brands";
 import { ProductCard } from "@/components/store/product-card";
 import { StoreFilters } from "@/components/store/store-filters";
 
@@ -27,13 +28,14 @@ export default async function LojaPage({ searchParams }: { searchParams: Promise
     sort: (first(sp.ordenar) as ProductFilters["sort"]) || "recent",
   };
 
-  const [products, collections] = await Promise.all([
+  const [products, collections, brands] = await Promise.all([
     listProducts(filters),
     db.collection.findMany({
       where: { active: true },
       orderBy: { sortOrder: "asc" },
       select: { slug: true, name: true },
     }),
+    getBrandNames(),
   ]);
 
   return (
@@ -51,7 +53,7 @@ export default async function LojaPage({ searchParams }: { searchParams: Promise
       </header>
 
       <div className="container-hux py-8 md:py-10">
-        <StoreFilters collections={collections} total={products.length} />
+        <StoreFilters collections={collections} brands={brands} total={products.length} />
 
         {products.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-4 py-28 text-center">

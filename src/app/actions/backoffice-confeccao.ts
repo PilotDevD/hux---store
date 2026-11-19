@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { requireModule } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { parseReaisToCents } from "@/lib/money";
+import { parseDateInput } from "@/lib/utils";
 import { PRODUCT_TYPES, SIZES, PRODUCTION_PHASES } from "@/lib/enums";
 
 // ------------------------- matéria-prima -----------------------------------
@@ -81,7 +82,7 @@ export async function upsertProductionJobAction(input: z.input<typeof jobSchema>
     rawMaterialId: j.rawMaterialId || null,
     brand: j.brand || null, productType: j.productType, modelName: j.modelName || null,
     color: j.color, size: j.size || null, qty: j.qty, forCustomerName: j.forCustomerName || null,
-    unitCost, dueDate: j.dueDate ? new Date(j.dueDate) : null, notes: j.notes || null,
+    unitCost, dueDate: parseDateInput(j.dueDate), notes: j.notes || null,
     handledById: staff.id,
   };
   if (j.id) await db.productionJob.update({ where: { id: j.id }, data });

@@ -87,19 +87,20 @@ export type ProductFilters = {
 
 export async function listProducts(filters: ProductFilters): Promise<ProductCardData[]> {
   const where: Prisma.ProductWhereInput = { active: true };
-  if (filters.brand) where.brand = filters.brand;
+  if (filters.brand) where.brand = { equals: filters.brand, mode: "insensitive" };
   if (filters.type) where.type = filters.type;
   if (filters.gender) where.gender = filters.gender;
   if (filters.collection) where.collection = { slug: filters.collection };
   if (filters.size) where.variants = { some: { size: filters.size, stock: { gt: 0 }, active: true } };
   if (filters.search) {
-    const s = filters.search;
+    const s = filters.search.trim();
     where.OR = [
-      { name: { contains: s } },
-      { modelName: { contains: s } },
-      { description: { contains: s } },
-      { brand: { contains: s } },
-      { variants: { some: { sku: { contains: s } } } },
+      { name: { contains: s, mode: "insensitive" } },
+      { modelName: { contains: s, mode: "insensitive" } },
+      { description: { contains: s, mode: "insensitive" } },
+      { brand: { contains: s, mode: "insensitive" } },
+      { variants: { some: { sku: { contains: s, mode: "insensitive" } } } },
+      { variants: { some: { color: { contains: s, mode: "insensitive" } } } },
     ];
   }
 

@@ -82,7 +82,7 @@ export function SalesExplorer({ sales, sellers, brands }: {
     });
   }, [sales, q, de, ate, applied]);
 
-  const total = filtered.reduce((s, o) => s + o.total, 0);
+  const total = filtered.reduce((s, o) => s + (o.status === "CANCELADO" ? 0 : o.total), 0);
 
   return (
     <>
@@ -127,10 +127,14 @@ export function SalesExplorer({ sales, sellers, brands }: {
           </div>
           <div className="divide-y divide-line">
             {filtered.map((o) => (
-              <div key={o.number} className="grid grid-cols-2 items-center gap-3 px-5 py-3 md:grid-cols-[1.1fr_1.5fr_1fr_0.9fr_0.9fr_0.9fr_auto] md:gap-4">
-                <span className="flex flex-col">
+              <div key={o.number} className={cn("grid grid-cols-2 items-center gap-3 px-5 py-3 md:grid-cols-[1.1fr_1.5fr_1fr_0.9fr_0.9fr_0.9fr_auto] md:gap-4", o.status === "CANCELADO" && "opacity-60")}>
+                <span className="flex flex-col gap-0.5">
                   <span className="font-mono text-sm font-semibold">{o.number}</span>
-                  <span className={cn("w-fit rounded-full px-1.5 py-0.5 text-[0.6rem] font-medium", o.channel === "MANUAL" ? "bg-positive/10 text-positive" : "bg-info/10 text-info")}>{SALE_CHANNEL_LABELS[o.channel] ?? o.channel}</span>
+                  {o.status === "CANCELADO" ? (
+                    <span className="w-fit rounded-full bg-negative/15 px-1.5 py-0.5 text-[0.6rem] font-semibold uppercase text-negative">Cancelada</span>
+                  ) : (
+                    <span className={cn("w-fit rounded-full px-1.5 py-0.5 text-[0.6rem] font-medium", o.channel === "MANUAL" ? "bg-positive/10 text-positive" : "bg-info/10 text-info")}>{SALE_CHANNEL_LABELS[o.channel] ?? o.channel}</span>
+                  )}
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate text-sm text-ink-soft">{o.customerName}</span>
@@ -140,7 +144,7 @@ export function SalesExplorer({ sales, sellers, brands }: {
                 <span className="hidden text-sm text-muted md:block">{formatDate(o.createdAt)}</span>
                 <span className="hidden text-xs text-muted md:block">{PAYMENT_METHOD_LABELS[o.paymentMethod] ?? o.paymentMethod}</span>
                 <span className="flex flex-col">
-                  <span className="text-sm font-semibold">{formatCents(o.total)}</span>
+                  <span className={cn("text-sm font-semibold", o.status === "CANCELADO" && "line-through text-muted")}>{formatCents(o.total)}</span>
                   <span className="md:hidden"><OrderStatusBadge status={o.status} /></span>
                 </span>
                 <span className="flex items-center justify-end gap-3">

@@ -15,7 +15,7 @@ import { formatCents } from "@/lib/money";
 import { formatDate, cn } from "@/lib/utils";
 
 export type VariantOption = {
-  id: string; label: string; brand: string; stock: number; price: number;
+  id: string; label: string; brand: string; stock: number; price: number; search?: string;
 };
 export type ReservationRow = {
   id: string; productName: string; brand: string; size: string; color: string;
@@ -48,7 +48,7 @@ export function ReservasManager({
   const filtered = useMemo(() => {
     if (!search.trim()) return variants.slice(0, 30);
     const q = search.toLowerCase();
-    return variants.filter((v) => v.label.toLowerCase().includes(q)).slice(0, 30);
+    return variants.filter((v) => (v.search ?? v.label).toLowerCase().includes(q)).slice(0, 30);
   }, [search, variants]);
 
   function reset() {
@@ -111,6 +111,7 @@ export function ReservasManager({
                     {r.customerName}{r.customerPhone ? ` · ${r.customerPhone}` : ""} · {formatDate(r.createdAt)}
                     {r.orderNumber ? ` · pedido ${r.orderNumber}` : ""}
                   </p>
+                  {r.notes && <p className="mt-1 text-xs text-ink-soft"><span className="text-faint">Obs.:</span> {r.notes}</p>}
                 </div>
                 {active && (
                   <div className="flex gap-2">

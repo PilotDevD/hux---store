@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireModule } from "@/lib/auth";
 import { parseReaisToCents } from "@/lib/money";
+import { parseDateInput } from "@/lib/utils";
 import { logAudit } from "@/lib/audit";
 import { BRANDS, PRODUCT_TYPES, SIZES, BACKORDER_STATUSES } from "@/lib/enums";
 
@@ -40,7 +41,7 @@ export async function upsertBackorderAction(
     qty: b.qty,
     customerName: b.customerName,
     customerPhone: b.customerPhone || null,
-    expectedDate: b.expectedDate ? new Date(b.expectedDate) : null,
+    expectedDate: parseDateInput(b.expectedDate),
     estimatedPrice: b.estimatedPrice ? parseReaisToCents(b.estimatedPrice) : null,
     notes: b.notes || null,
   };

@@ -45,6 +45,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
       .filter((v) => v.active)
       .map((v) => ({
         id: v.id,
+        sku: v.sku,
         size: v.size,
         color: v.color,
         colorHex: v.colorHex ?? "#22262E",

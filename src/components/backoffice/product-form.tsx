@@ -12,7 +12,7 @@ import {
 } from "@/lib/enums";
 
 type VariantRow = {
-  id?: string; size: string; color: string; colorHex: string;
+  id?: string; sku?: string; size: string; color: string; colorHex: string;
   stock: string; cost: string; priceOverride: string;
 };
 
@@ -372,6 +372,11 @@ export function ProductForm({
         <div className="space-y-3">
           {f.variants.map((v, i) => (
             <div key={i} className="grid grid-cols-2 gap-2 rounded-[var(--radius)] border border-line p-3 sm:grid-cols-[80px_1fr_60px_1fr_1fr_1fr_auto]">
+              {v.sku && (
+                <p className="col-span-2 flex items-center gap-1.5 font-mono text-[0.65rem] text-faint sm:col-span-7">
+                  Código interno: <span className="rounded bg-elevated px-1.5 py-0.5 text-ink-soft">{v.sku}</span>
+                </p>
+              )}
               <label><span className="data-label text-faint">Tam.</span>
                 <select className="field mt-1 py-2" value={v.size} onChange={(e) => setVariant(i, "size", e.target.value)}>
                   {SIZES.map((s) => <option key={s} value={s}>{SIZE_LABELS[s]}</option>)}

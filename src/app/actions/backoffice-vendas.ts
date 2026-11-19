@@ -10,7 +10,7 @@ import { validateCoupon } from "@/lib/coupon";
 import { ambassadorByEmail, ambassadorBalance } from "@/lib/cashback";
 import { feeForSale, netAfterFee, type InstallmentFee } from "@/lib/card-machine-fee";
 import { parseReaisToCents, formatCents } from "@/lib/money";
-import { onlyDigits, parseJson } from "@/lib/utils";
+import { onlyDigits, parseJson, parseDateInput } from "@/lib/utils";
 import { MANUAL_PAYMENT_METHODS } from "@/lib/enums";
 
 /** Validate a coupon for a physical sale (no customer, no shipping). */
@@ -162,7 +162,7 @@ export async function createManualSaleAction(input: z.input<typeof schema>): Pro
     entrada = Math.max(0, Math.min(total, d.downPayment ? parseReaisToCents(d.downPayment) : 0));
     const financed = total - entrada;
     if (financed <= 0) return { ok: false, error: "Para venda a prazo, a entrada deve ser menor que o total." };
-    const firstDue = d.firstDueDate ? new Date(d.firstDueDate) : (() => { const dt = new Date(); dt.setMonth(dt.getMonth() + 1); return dt; })();
+    const firstDue = parseDateInput(d.firstDueDate) ?? (() => { const dt = new Date(); dt.setMonth(dt.getMonth() + 1); return dt; })();
     if (isNaN(firstDue.getTime())) return { ok: false, error: "Data do primeiro vencimento inválida." };
     aprazoPlan = buildAprazoPlan(financed, d.aprazoParcelas ?? 1, firstDue);
   }

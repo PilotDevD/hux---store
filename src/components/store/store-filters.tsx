@@ -4,7 +4,6 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { Search, X, SlidersHorizontal } from "lucide-react";
 import {
-  BRANDS,
   GENDERS,
   GENDER_LABELS,
   PRODUCT_TYPES,
@@ -16,7 +15,6 @@ import { cn } from "@/lib/utils";
 
 type Opt = { value: string; label: string };
 
-const brandOpts: Opt[] = BRANDS.map((b) => ({ value: b, label: b }));
 const genderOpts: Opt[] = GENDERS.map((g) => ({ value: g, label: GENDER_LABELS[g] }));
 const typeOpts: Opt[] = PRODUCT_TYPES.map((t) => ({ value: t, label: PRODUCT_TYPE_LABELS[t] }));
 const sizeOpts: Opt[] = SIZES.map((s) => ({ value: s, label: SIZE_LABELS[s] }));
@@ -60,11 +58,14 @@ function Select({
 
 export function StoreFilters({
   collections,
+  brands,
   total,
 }: {
   collections: { slug: string; name: string }[];
+  brands: string[];
   total: number;
 }) {
+  const brandOpts: Opt[] = brands.map((b) => ({ value: b, label: b }));
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();

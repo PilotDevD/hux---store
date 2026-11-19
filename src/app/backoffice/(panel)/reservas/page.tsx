@@ -17,19 +17,23 @@ export default async function ReservasPage() {
     db.reservation.findMany({ orderBy: [{ status: "asc" }, { createdAt: "desc" }] }),
     db.productVariant.findMany({
       where: { active: true, product: { active: true } },
-      include: { product: { select: { name: true, brand: true, type: true, basePrice: true } } },
+      include: { product: { select: { name: true, brand: true, type: true, basePrice: true, supplierCode: true } } },
       orderBy: { createdAt: "asc" },
     }),
     getCustomerOptions(),
   ]);
 
-  const variantOptions: VariantOption[] = variants.map((v) => ({
-    id: v.id,
-    brand: v.product.brand,
-    stock: v.stock,
-    price: v.priceOverride ?? v.product.basePrice,
-    label: `${v.product.name} · ${SIZE_LABELS[v.size as Size] ?? v.size} · ${v.color} · ${PRODUCT_TYPE_LABELS[v.product.type as ProductType] ?? v.product.type} (${v.sku})`,
-  }));
+  const variantOptions: VariantOption[] = variants.map((v) => {
+    const label = `${v.product.name} · ${SIZE_LABELS[v.size as Size] ?? v.size} · ${v.color} · ${PRODUCT_TYPE_LABELS[v.product.type as ProductType] ?? v.product.type} (${v.sku})`;
+    return {
+      id: v.id,
+      brand: v.product.brand,
+      stock: v.stock,
+      price: v.priceOverride ?? v.product.basePrice,
+      label,
+      search: `${label} ${v.sku} ${v.product.supplierCode ?? ""} ${v.product.brand}`.toLowerCase(),
+    };
+  });
 
   const rows: ReservationRow[] = reservations.map((r) => ({
     id: r.id, productName: r.productName, brand: r.brand, size: r.size, color: r.color,

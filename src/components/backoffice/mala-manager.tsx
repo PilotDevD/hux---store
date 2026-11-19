@@ -12,7 +12,7 @@ import { useToast } from "@/components/ui/toast";
 import { formatCents } from "@/lib/money";
 import { formatDate, cn } from "@/lib/utils";
 
-export type VariantOption = { id: string; label: string; brand: string; stock: number; price: number };
+export type VariantOption = { id: string; label: string; brand: string; stock: number; price: number; search?: string };
 export type MalaItemRow = { id: string; variantId: string; productName: string; brand: string; size: string; color: string; qty: number; unitPrice: number; decision: string };
 export type MalaRow = {
   id: string; customerName: string; customerPhone: string | null; notes: string | null;
@@ -40,7 +40,7 @@ export function MalaManager({ malas, variants, customers }: { malas: MalaRow[]; 
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return (q ? variants.filter((v) => v.label.toLowerCase().includes(q)) : variants).slice(0, 25);
+    return (q ? variants.filter((v) => (v.search ?? v.label).toLowerCase().includes(q)) : variants).slice(0, 25);
   }, [search, variants]);
 
   function addToCart(v: VariantOption) {
