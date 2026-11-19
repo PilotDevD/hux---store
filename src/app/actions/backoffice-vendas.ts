@@ -222,6 +222,12 @@ export async function createManualSaleAction(input: z.input<typeof schema>): Pro
       if (couponId) {
         await tx.coupon.update({ where: { id: couponId }, data: { usedCount: { increment: 1 } } });
       }
+      // Caixa: venda em dinheiro entra automaticamente no caixa físico.
+      if (!isAprazo && d.paymentMethod === "DINHEIRO" && total > 0) {
+        await tx.cashEntry.create({
+          data: { kind: "ENTRADA", amount: total, note: `Venda ${number} (dinheiro)`, userId: staff.id, userName: staff.displayName },
+        });
+      }
     });
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Erro ao registrar venda." };
@@ -230,7 +236,7 @@ export async function createManualSaleAction(input: z.input<typeof schema>): Pro
     staff, action: "SALE", entity: "Venda", entityId: number,
     summary: isAprazo
       ? `Venda a prazo ${number} — ${snapName} (${formatCents(total)}, entrada ${formatCents(entrada)}, ${aprazoPlan.length}x), vendedor ${seller.displayName}`
-      : `Venda física ${number} — ${snapName} (${formatCents(total)}), vendedor ${seller.displayName}`,
+      : `Venda física ${number} — ${snapName} (${formatCents(total)}, ${d.paymentMethod === "DINHEIRO" ? "dinheiro" : d.paymentMethod.toLowerCase()}${cashbackApplied > 0 ? `, cashback ${formatCents(cashbackApplied)}` : ""}), vendedor ${seller.displayName}`,
   });
   revalidatePath("/backoffice/clientes");
   revalidatePath("/backoffice/vendas");

@@ -54,7 +54,7 @@ export function CaixaCard({ balance, entries, cashSalesToday }: { balance: numbe
       <div className="px-5 py-4">
         <p className="data-label text-muted">Saldo em caixa</p>
         <p className={cn("font-display text-3xl", balance < 0 ? "text-negative" : "text-brand")}>{formatCents(balance)}</p>
-        <p className="mt-1 text-xs text-faint">Vendas em dinheiro hoje: {formatCents(cashSalesToday)} (não entram no saldo automaticamente)</p>
+        <p className="mt-1 text-xs text-faint">Vendas em dinheiro hoje: {formatCents(cashSalesToday)} — já incluídas no saldo. Use Entrada/Saída para sangria, suprimento e ajustes.</p>
       </div>
 
       {open && (

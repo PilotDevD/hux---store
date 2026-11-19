@@ -316,6 +316,12 @@ export async function transitionOrder(
         where: { orderId, status: "PENDENTE" },
         data: { status: "CANCELADO" },
       });
+      // Caixa: se a venda foi recebida em dinheiro, estorna a saída no caixa.
+      if (order.paymentMethod === "DINHEIRO" && order.paymentStatus === "CONFIRMADO" && order.total > 0) {
+        await tx.cashEntry.create({
+          data: { kind: "SAIDA", amount: order.total, note: `Estorno — cancelamento ${order.number}`, userId: opts.staffId ?? null },
+        });
+      }
     }
 
     await tx.order.update({ where: { id: orderId }, data });
