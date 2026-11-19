@@ -417,8 +417,30 @@ model Reservation {
   createdAt   DateTime @default(now())
   settledAt   DateTime?
 
+  // Vários produtos na mesma reserva. Os campos planos acima guardam o 1º item
+  // (resumo/compatibilidade); `items` tem todos. Reservas antigas não têm items.
+  items ReservationItem[]
+
   @@index([status])
   @@index([variantId])
+}
+
+model ReservationItem {
+  id            String @id @default(cuid())
+  reservationId String
+  variantId     String
+  brand         String
+  productName   String
+  type          String
+  size          String
+  color         String
+  sku           String
+  unitPrice     Int    // cents (snapshot)
+  qty           Int    @default(1)
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@index([reservationId])
 }
 
 // Encomenda — pedido de produto (fora de estoque / sob medida).

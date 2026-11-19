@@ -15,6 +15,16 @@ const methodLabel = (m: string) => PAYMENT_METHOD_LABELS[m] ?? m;
 // (não exportado: arquivos "use server" só podem exportar funções async)
 const RESERVA_PAYMENT_METHODS = MANUAL_PAYMENT_METHODS.filter((m) => m !== "A_PRAZO");
 
+type ResItem = { variantId: string; brand: string; productName: string; type: string; size: string; color: string; sku: string; unitPrice: number; qty: number };
+/** Itens da reserva: usa `items` quando existem, senão os campos planos (reservas antigas / 1 produto). */
+function reservationItems(r: {
+  items?: ResItem[]; variantId: string; brand: string; productName: string; type: string;
+  size: string; color: string; sku: string; unitPrice: number; qty: number;
+}): ResItem[] {
+  if (r.items && r.items.length > 0) return r.items;
+  return [{ variantId: r.variantId, brand: r.brand, productName: r.productName, type: r.type, size: r.size, color: r.color, sku: r.sku, unitPrice: r.unitPrice, qty: r.qty }];
+}
+
 function reservaOrderNumber(): string {
   const yy = new Date().getFullYear().toString().slice(-2);
   const rand = Math.floor(100000 + Math.random() * 900000);
@@ -22,8 +32,10 @@ function reservaOrderNumber(): string {
 }
 
 const createSchema = z.object({
-  variantId: z.string().min(1),
-  qty: z.coerce.number().int().positive(),
+  // Compatibilidade: aceita um único produto (variantId+qty) OU uma lista (items).
+  variantId: z.string().optional(),
+  qty: z.coerce.number().int().positive().optional(),
+  items: z.array(z.object({ variantId: z.string().min(1), qty: z.coerce.number().int().positive() })).optional(),
   customerName: z.string().min(2, "Informe o nome do cliente."),
   customerPhone: z.string().optional(),
   notes: z.string().optional(),
@@ -37,42 +49,46 @@ export async function createReservationAction(
   if (!parsed.success) return { ok: false, error: parsed.error.errors[0]?.message ?? "Dados inválidos." };
   const { variantId, qty, customerName, customerPhone, notes } = parsed.data;
 
-  const variant = await db.productVariant.findUnique({ where: { id: variantId }, include: { product: true } });
-  if (!variant || !variant.active) return { ok: false, error: "Variante indisponível." };
-  if (variant.stock < qty) return { ok: false, error: "Estoque insuficiente para reservar." };
+  // Normaliza para uma lista de itens (dedupe por variante).
+  const reqItems = (parsed.data.items && parsed.data.items.length > 0)
+    ? parsed.data.items
+    : (variantId ? [{ variantId, qty: qty ?? 1 }] : []);
+  if (reqItems.length === 0) return { ok: false, error: "Selecione ao menos um produto." };
+  const byVariant = new Map<string, number>();
+  for (const it of reqItems) byVariant.set(it.variantId, (byVariant.get(it.variantId) ?? 0) + it.qty);
 
   const promos = await getActivePromotions();
-  const { price } = computePrice(variant.product, promos);
-  const unitPrice = variant.priceOverride ?? price;
+  const built: { variantId: string; brand: string; productName: string; type: string; size: string; color: string; sku: string; unitPrice: number; qty: number }[] = [];
+  for (const [vid, q] of byVariant) {
+    const v = await db.productVariant.findUnique({ where: { id: vid }, include: { product: true } });
+    if (!v || !v.active) return { ok: false, error: "Variante indisponível." };
+    if (v.stock < q) return { ok: false, error: `Estoque insuficiente para ${v.product.name} (${v.size}/${v.color}).` };
+    const { price } = computePrice(v.product, promos);
+    built.push({ variantId: v.id, brand: v.product.brand, productName: v.product.name, type: v.product.type, size: v.size, color: v.color, sku: v.sku, unitPrice: v.priceOverride ?? price, qty: q });
+  }
+  const first = built[0];
 
   try {
-    await db.$transaction([
-      db.productVariant.update({ where: { id: variantId }, data: { stock: { decrement: qty } } }),
-      db.stockMovement.create({
-        data: { variantId, type: "SAIDA", qty, reason: `Reserva — ${customerName}`, userId: staff.id },
-      }),
-      db.reservation.create({
+    await db.$transaction(async (tx) => {
+      for (const b of built) {
+        await tx.productVariant.update({ where: { id: b.variantId }, data: { stock: { decrement: b.qty } } });
+        await tx.stockMovement.create({ data: { variantId: b.variantId, type: "SAIDA", qty: b.qty, reason: `Reserva — ${customerName}`, userId: staff.id } });
+      }
+      await tx.reservation.create({
         data: {
-          variantId,
-          brand: variant.product.brand,
-          productName: variant.product.name,
-          type: variant.product.type,
-          size: variant.size,
-          color: variant.color,
-          sku: variant.sku,
-          unitPrice,
-          qty,
-          customerName,
-          customerPhone: customerPhone || null,
-          notes: notes || null,
-          status: "ATIVA",
+          // Campos planos = 1º item (resumo/compatibilidade).
+          variantId: first.variantId, brand: first.brand, productName: first.productName, type: first.type,
+          size: first.size, color: first.color, sku: first.sku, unitPrice: first.unitPrice, qty: first.qty,
+          customerName, customerPhone: customerPhone || null, notes: notes || null, status: "ATIVA",
+          items: { create: built.map((b) => ({ variantId: b.variantId, brand: b.brand, productName: b.productName, type: b.type, size: b.size, color: b.color, sku: b.sku, unitPrice: b.unitPrice, qty: b.qty })) },
         },
-      }),
-    ]);
+      });
+    });
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Erro ao criar reserva." };
   }
-  await logAudit({ staff, action: "CREATE", entity: "Reserva", summary: `Reservou ${qty}x ${variant.product.name} para ${customerName}` });
+  const totalQty = built.reduce((s, b) => s + b.qty, 0);
+  await logAudit({ staff, action: "CREATE", entity: "Reserva", summary: `Reservou ${totalQty}x em ${built.length} produto(s) para ${customerName}` });
   revalidatePath("/backoffice/reservas");
   revalidatePath("/backoffice/estoque");
   return { ok: true };
@@ -89,12 +105,12 @@ export async function markReservationPaidAction(
 ): Promise<{ ok: boolean; error?: string }> {
   const staff = await requireModule("reservas");
   if (!(RESERVA_PAYMENT_METHODS as readonly string[]).includes(method)) return { ok: false, error: "Forma de pagamento inválida para reserva." };
-  const r = await db.reservation.findUnique({ where: { id: reservationId } });
+  const r = await db.reservation.findUnique({ where: { id: reservationId }, include: { items: true } });
   if (!r) return { ok: false, error: "Reserva não encontrada." };
   if (r.status !== "ATIVA") return { ok: false, error: "Reserva já finalizada ou cancelada." };
   if (r.paid) return { ok: false, error: "Reserva já está marcada como paga." };
 
-  const total = r.unitPrice * r.qty;
+  const total = reservationItems(r).reduce((s, it) => s + it.unitPrice * it.qty, 0);
   try {
     await db.$transaction(async (tx) => {
       await tx.reservation.update({
@@ -125,7 +141,7 @@ export async function closeReservationAction(
   method?: string,
 ): Promise<{ ok: boolean; error?: string; number?: string }> {
   const staff = await requireModule("reservas");
-  const r = await db.reservation.findUnique({ where: { id: reservationId } });
+  const r = await db.reservation.findUnique({ where: { id: reservationId }, include: { items: true } });
   if (!r) return { ok: false, error: "Reserva não encontrada." };
   if (r.status !== "ATIVA") return { ok: false, error: "Reserva já finalizada ou cancelada." };
 
@@ -133,9 +149,11 @@ export async function closeReservationAction(
   const effMethod = r.paid ? (r.paidMethod ?? "PIX_MANUAL") : (method ?? "PIX_MANUAL");
   if (!(RESERVA_PAYMENT_METHODS as readonly string[]).includes(effMethod)) return { ok: false, error: "Forma de pagamento inválida para reserva." };
 
-  const variant = await db.productVariant.findUnique({ where: { id: r.variantId } });
-  const unitCost = variant?.cost ?? 0;
-  const subtotal = r.unitPrice * r.qty;
+  const lines = reservationItems(r);
+  const variants = await db.productVariant.findMany({ where: { id: { in: lines.map((l) => l.variantId) } } });
+  const costOf = (vid: string) => variants.find((v) => v.id === vid)?.cost ?? 0;
+  const subtotal = lines.reduce((s, l) => s + l.unitPrice * l.qty, 0);
+  const costTotal = lines.reduce((s, l) => s + costOf(l.variantId) * l.qty, 0);
   const number = reservaOrderNumber();
 
   try {
@@ -151,7 +169,7 @@ export async function closeReservationAction(
           discountTotal: 0,
           shippingTotal: 0,
           total: subtotal,
-          costTotal: unitCost * r.qty,
+          costTotal,
           shippingLabel: "Retirada / balcão",
           addressSnapshot: "{}",
           customerSnapshot: JSON.stringify({ name: r.customerName, email: "", phone: r.customerPhone }),
@@ -159,13 +177,16 @@ export async function closeReservationAction(
           handledById: staff.id,
           notes: `Venda de reserva. ${r.notes ?? ""}`.trim(),
           items: {
-            create: [{
-              variantId: r.variantId,
-              brand: r.brand, productName: r.productName, type: r.type,
-              size: r.size, color: r.color, sku: r.sku,
-              unitPrice: r.unitPrice, unitCost, qty: r.qty, lineTotal: subtotal,
-            }],
+            create: lines.map((l) => ({
+              variantId: l.variantId,
+              brand: l.brand, productName: l.productName, type: l.type,
+              size: l.size, color: l.color, sku: l.sku,
+              unitPrice: l.unitPrice, unitCost: costOf(l.variantId), qty: l.qty, lineTotal: l.unitPrice * l.qty,
+            })),
           },
+          payments: effMethod !== "A_PRAZO"
+            ? { create: [{ kind: "PAGAMENTO", method: effMethod, amount: subtotal, userId: staff.id, userName: staff.displayName }] }
+            : undefined,
           events: {
             create: [
               { status: "AGUARDANDO_PAGAMENTO", note: "Venda originada de reserva." },
@@ -197,17 +218,18 @@ export async function cancelReservationAction(
   reservationId: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const staff = await requireModule("reservas");
-  const r = await db.reservation.findUnique({ where: { id: reservationId } });
+  const r = await db.reservation.findUnique({ where: { id: reservationId }, include: { items: true } });
   if (!r) return { ok: false, error: "Reserva não encontrada." };
   if (r.status !== "ATIVA") return { ok: false, error: "Reserva já finalizada ou cancelada." };
 
-  await db.$transaction([
-    db.productVariant.update({ where: { id: r.variantId }, data: { stock: { increment: r.qty } } }),
-    db.stockMovement.create({
-      data: { variantId: r.variantId, type: "ENTRADA", qty: r.qty, reason: `Reserva cancelada — ${r.customerName}`, userId: staff.id },
-    }),
-    db.reservation.update({ where: { id: reservationId }, data: { status: "CANCELADA", settledAt: new Date() } }),
-  ]);
+  const lines = reservationItems(r);
+  await db.$transaction(async (tx) => {
+    for (const l of lines) {
+      await tx.productVariant.update({ where: { id: l.variantId }, data: { stock: { increment: l.qty } } });
+      await tx.stockMovement.create({ data: { variantId: l.variantId, type: "ENTRADA", qty: l.qty, reason: `Reserva cancelada — ${r.customerName}`, userId: staff.id } });
+    }
+    await tx.reservation.update({ where: { id: reservationId }, data: { status: "CANCELADA", settledAt: new Date() } });
+  });
   await logAudit({ staff, action: "DELETE", entity: "Reserva", entityId: reservationId, summary: `Cancelou a reserva de ${r.customerName} (estoque devolvido)` });
   revalidatePath("/backoffice/reservas");
   revalidatePath("/backoffice/estoque");

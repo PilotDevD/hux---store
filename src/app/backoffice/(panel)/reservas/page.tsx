@@ -14,7 +14,7 @@ export default async function ReservasPage() {
   await guardModule("reservas");
 
   const [reservations, variants, customers] = await Promise.all([
-    db.reservation.findMany({ orderBy: [{ status: "asc" }, { createdAt: "desc" }] }),
+    db.reservation.findMany({ orderBy: [{ status: "asc" }, { createdAt: "desc" }], include: { items: true } }),
     db.productVariant.findMany({
       where: { active: true, product: { active: true } },
       include: { product: { select: { name: true, brand: true, type: true, basePrice: true, supplierCode: true } } },
@@ -35,12 +35,18 @@ export default async function ReservasPage() {
     };
   });
 
-  const rows: ReservationRow[] = reservations.map((r) => ({
-    id: r.id, productName: r.productName, brand: r.brand, size: r.size, color: r.color,
-    qty: r.qty, unitPrice: r.unitPrice, customerName: r.customerName, customerPhone: r.customerPhone,
-    notes: r.notes, status: r.status, orderNumber: r.orderNumber, createdAt: r.createdAt.toISOString(),
-    paid: r.paid, paidMethod: r.paidMethod,
-  }));
+  const rows: ReservationRow[] = reservations.map((r) => {
+    const items = r.items.length > 0
+      ? r.items.map((it) => ({ productName: it.productName, brand: it.brand, size: it.size, color: it.color, qty: it.qty, unitPrice: it.unitPrice }))
+      : [{ productName: r.productName, brand: r.brand, size: r.size, color: r.color, qty: r.qty, unitPrice: r.unitPrice }];
+    return {
+      id: r.id, productName: r.productName, brand: r.brand, size: r.size, color: r.color,
+      qty: r.qty, unitPrice: r.unitPrice, customerName: r.customerName, customerPhone: r.customerPhone,
+      notes: r.notes, status: r.status, orderNumber: r.orderNumber, createdAt: r.createdAt.toISOString(),
+      paid: r.paid, paidMethod: r.paidMethod,
+      items, total: items.reduce((s, it) => s + it.unitPrice * it.qty, 0),
+    };
+  });
 
   return (
     <>
