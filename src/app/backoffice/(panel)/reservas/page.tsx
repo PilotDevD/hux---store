@@ -39,6 +39,7 @@ export default async function ReservasPage() {
     id: r.id, productName: r.productName, brand: r.brand, size: r.size, color: r.color,
     qty: r.qty, unitPrice: r.unitPrice, customerName: r.customerName, customerPhone: r.customerPhone,
     notes: r.notes, status: r.status, orderNumber: r.orderNumber, createdAt: r.createdAt.toISOString(),
+    paid: r.paid, paidMethod: r.paidMethod,
   }));
 
   return (

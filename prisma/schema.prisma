@@ -387,6 +387,9 @@ model Reservation {
   customerPhone String?
   notes       String?
   status      String   @default("ATIVA") // ATIVA | FINALIZADA | CANCELADA
+  paid        Boolean  @default(false)   // pago antecipado (aguardando retirada)
+  paidMethod  String?  // forma de pagamento (DINHEIRO | PIX_MANUAL | DEBITO | CARTAO | A_PRAZO)
+  paidAt      DateTime?
   orderNumber String?  // set when closed into a sale
   createdAt   DateTime @default(now())
   settledAt   DateTime?

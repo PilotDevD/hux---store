@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Loader2, Bookmark, Check, X, Search } from "lucide-react";
 import {
-  createReservationAction, closeReservationAction, cancelReservationAction,
+  createReservationAction, closeReservationAction, cancelReservationAction, markReservationPaidAction,
 } from "@/app/actions/backoffice-reservas";
 import { Modal } from "./modal";
 import { EmptyState } from "./bo-ui";
@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { formatCents } from "@/lib/money";
 import { formatDate, cn } from "@/lib/utils";
+import { MANUAL_PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from "@/lib/enums";
 
 export type VariantOption = {
   id: string; label: string; brand: string; stock: number; price: number; search?: string;
@@ -21,6 +22,7 @@ export type ReservationRow = {
   id: string; productName: string; brand: string; size: string; color: string;
   qty: number; unitPrice: number; customerName: string; customerPhone: string | null;
   notes: string | null; status: string; orderNumber: string | null; createdAt: string;
+  paid: boolean; paidMethod: string | null;
 };
 
 export function ReservasManager({
@@ -66,12 +68,31 @@ export function ReservasManager({
   }
 
   const [rowBusy, setRowBusy] = useState<string | null>(null);
-  async function fechar(id: string) {
+  // Qual linha está com o seletor de forma de pagamento aberto, e para qual ação.
+  const [payFor, setPayFor] = useState<{ id: string; mode: "fechar" | "pagar" } | null>(null);
+  const [payMethod, setPayMethod] = useState("DINHEIRO");
+
+  async function fechar(id: string, method?: string) {
     setRowBusy(id);
-    const res = await closeReservationAction(id);
+    const res = await closeReservationAction(id, method);
     setRowBusy(null);
-    if (res.ok) { toast(`Venda fechada! Pedido ${res.number}.`, "success"); router.refresh(); }
+    if (res.ok) { toast(`Venda fechada! Pedido ${res.number}.`, "success"); setPayFor(null); router.refresh(); }
     else toast(res.error ?? "Erro.", "error");
+  }
+  async function registrarPagamento(id: string, method: string) {
+    setRowBusy(id);
+    const res = await markReservationPaidAction(id, method);
+    setRowBusy(null);
+    if (res.ok) { toast("Pagamento registrado. Aguardando retirada.", "success"); setPayFor(null); router.refresh(); }
+    else toast(res.error ?? "Erro.", "error");
+  }
+  function openPay(id: string, mode: "fechar" | "pagar") {
+    setPayFor({ id, mode }); setPayMethod("DINHEIRO");
+  }
+  function confirmPay() {
+    if (!payFor) return;
+    if (payFor.mode === "pagar") registrarPagamento(payFor.id, payMethod);
+    else fechar(payFor.id, payMethod);
   }
   async function cancelar(id: string) {
     setRowBusy(id);
@@ -96,31 +117,58 @@ export function ReservasManager({
           {reservations.map((r) => {
             const active = r.status === "ATIVA";
             return (
-              <div key={r.id} className="flex flex-wrap items-center gap-4 px-5 py-4">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="truncate font-semibold">{r.productName}</p>
-                    <Badge tone={active ? "warning" : r.status === "FINALIZADA" ? "success" : "neutral"}>
-                      {r.status === "ATIVA" ? "Reservada" : r.status === "FINALIZADA" ? "Vendida" : "Cancelada"}
-                    </Badge>
+              <div key={r.id} className="px-5 py-4">
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate font-semibold">{r.productName}</p>
+                      <Badge tone={active ? "warning" : r.status === "FINALIZADA" ? "success" : "neutral"}>
+                        {r.status === "ATIVA" ? "Reservada" : r.status === "FINALIZADA" ? "Vendida" : "Cancelada"}
+                      </Badge>
+                      {active && (
+                        <Badge tone={r.paid ? "success" : "neutral"}>
+                          {r.paid ? `Pago${r.paidMethod ? ` · ${PAYMENT_METHOD_LABELS[r.paidMethod] ?? r.paidMethod}` : ""} · aguardando retirada` : "Não pago"}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="font-mono text-xs text-muted">
+                      {r.brand} · {r.size} · {r.color} · {r.qty}x · {formatCents(r.unitPrice * r.qty)}
+                    </p>
+                    <p className="text-xs text-muted">
+                      {r.customerName}{r.customerPhone ? ` · ${r.customerPhone}` : ""} · {formatDate(r.createdAt)}
+                      {r.orderNumber ? ` · pedido ${r.orderNumber}` : ""}
+                    </p>
+                    {r.notes && <p className="mt-1 text-xs text-ink-soft"><span className="text-faint">Obs.:</span> {r.notes}</p>}
                   </div>
-                  <p className="font-mono text-xs text-muted">
-                    {r.brand} · {r.size} · {r.color} · {r.qty}x · {formatCents(r.unitPrice * r.qty)}
-                  </p>
-                  <p className="text-xs text-muted">
-                    {r.customerName}{r.customerPhone ? ` · ${r.customerPhone}` : ""} · {formatDate(r.createdAt)}
-                    {r.orderNumber ? ` · pedido ${r.orderNumber}` : ""}
-                  </p>
-                  {r.notes && <p className="mt-1 text-xs text-ink-soft"><span className="text-faint">Obs.:</span> {r.notes}</p>}
+                  {active && (
+                    <div className="flex flex-wrap gap-2">
+                      {!r.paid && (
+                        <button onClick={() => openPay(r.id, "pagar")} disabled={rowBusy === r.id} className="btn btn-ghost px-3 py-2 text-xs text-positive">
+                          Registrar pagamento
+                        </button>
+                      )}
+                      <button onClick={() => (r.paid ? fechar(r.id) : openPay(r.id, "fechar"))} disabled={rowBusy === r.id} className="btn btn-primary px-3 py-2 text-xs">
+                        {rowBusy === r.id ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} {r.paid ? "Fechar venda (retirada)" : "Fechar venda"}
+                      </button>
+                      <button onClick={() => cancelar(r.id)} disabled={rowBusy === r.id} className="btn btn-ghost px-3 py-2 text-xs text-negative">
+                        <X size={13} /> Cancelar
+                      </button>
+                    </div>
+                  )}
                 </div>
-                {active && (
-                  <div className="flex gap-2">
-                    <button onClick={() => fechar(r.id)} disabled={rowBusy === r.id} className="btn btn-primary px-3 py-2 text-xs">
-                      {rowBusy === r.id ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Fechar venda
+
+                {active && payFor?.id === r.id && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-void p-3">
+                    <span className="text-xs text-muted">
+                      {payFor.mode === "pagar" ? "Forma de pagamento (pago agora, retira depois):" : "Fechar venda — forma de pagamento:"}
+                    </span>
+                    <select className="field w-44 py-2 text-sm" value={payMethod} onChange={(e) => setPayMethod(e.target.value)}>
+                      {MANUAL_PAYMENT_METHODS.filter((m) => m !== "A_PRAZO").map((m) => <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m] ?? m}</option>)}
+                    </select>
+                    <button onClick={confirmPay} disabled={rowBusy === r.id} className="btn btn-primary px-3 py-2 text-xs">
+                      {rowBusy === r.id ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Confirmar
                     </button>
-                    <button onClick={() => cancelar(r.id)} disabled={rowBusy === r.id} className="btn btn-ghost px-3 py-2 text-xs text-negative">
-                      <X size={13} /> Cancelar
-                    </button>
+                    <button onClick={() => setPayFor(null)} className="text-faint hover:text-ink"><X size={15} /></button>
                   </div>
                 )}
               </div>
