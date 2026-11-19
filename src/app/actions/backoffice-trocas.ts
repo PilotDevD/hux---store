@@ -263,6 +263,19 @@ export async function processReturnAction(
         }
       }
 
+      // Caixa: devolução em dinheiro sai do caixa físico (item 8/10).
+      if (refundMethod === "DINHEIRO" && refundAmount > 0) {
+        await tx.cashEntry.create({
+          data: { kind: "SAIDA", amount: refundAmount, note: `${type === "TROCA" ? "Troca" : "Devolução"} ${number} — reembolso em dinheiro (pedido ${order.number})`, userId: staff.id, userName: staff.displayName },
+        });
+      }
+      // Caixa: numa troca com diferença a cobrar paga em dinheiro, entra no caixa.
+      if (hasTroca && exchangeDiff > 0 && refundMethod === "DINHEIRO") {
+        await tx.cashEntry.create({
+          data: { kind: "ENTRADA", amount: exchangeDiff, note: `Troca ${number} — diferença recebida em dinheiro (pedido ${order.number})`, userId: staff.id, userName: staff.displayName },
+        });
+      }
+
       // Trace on the order timeline.
       const parts: string[] = [];
       if (refundMethod === "VALE" && valeAmount > 0) parts.push(`vale ${valeCode} de ${formatCents(valeAmount)}`);

@@ -202,7 +202,26 @@ export async function upsertProductAction(
           }
         }
       }
-      await logAudit({ staff, action: "UPDATE", entity: "Produto", entityId: p.id, summary: `Editou o produto "${p.name}" (${p.brand})` });
+      // Auditoria detalhada: descreve o que mudou (antes → depois) em vez de só "UPDATE".
+      const fmtReais = (c: number | null) => (c ? `R$ ${(c / 100).toFixed(2).replace(".", ",")}` : "—");
+      const changes: string[] = [];
+      const metaAntes: Record<string, unknown> = {};
+      const metaDepois: Record<string, unknown> = {};
+      const track = (campo: string, antes: unknown, depois: unknown, label: string) => {
+        if (antes !== depois) { changes.push(label); metaAntes[campo] = antes; metaDepois[campo] = depois; }
+      };
+      track("nome", existing.name, p.name, `nome "${existing.name}" → "${p.name}"`);
+      track("marca", existing.brand, p.brand, `marca ${existing.brand} → ${p.brand}`);
+      if (!isSeller) {
+        track("preco", existing.basePrice, basePrice, `preço ${fmtReais(existing.basePrice)} → ${fmtReais(basePrice)}`);
+        track("precoDe", existing.compareAtPrice, compareAt, `preço "de" ${fmtReais(existing.compareAtPrice)} → ${fmtReais(compareAt)}`);
+      }
+      track("ativo", existing.active, p.active ?? true, `${(p.active ?? true) ? "ativado" : "desativado"} na loja`);
+      track("destaque", existing.featured, !!p.featured, `destaque ${!!p.featured ? "ligado" : "desligado"}`);
+      const summary = changes.length
+        ? `Editou "${p.name}" (${p.brand}): ${changes.join("; ")}`
+        : `Editou "${p.name}" (${p.brand}) — fotos/variantes/dados`;
+      await logAudit({ staff, action: "UPDATE", entity: "Produto", entityId: p.id, summary, meta: changes.length ? { antes: metaAntes, depois: metaDepois } : undefined });
       revalidatePath("/backoffice/produtos");
       revalidatePath(`/produto/${existing.slug}`);
       return { ok: true, slug: existing.slug };
