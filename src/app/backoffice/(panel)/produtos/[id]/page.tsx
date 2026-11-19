@@ -15,7 +15,8 @@ export const metadata: Metadata = { title: "Editar produto" };
 const reais = (cents: number | null | undefined) => (cents ? formatCentsPlain(cents) : "");
 
 export default async function EditProductPage({ params }: { params: Promise<{ id: string }> }) {
-  await guardModule("produtos");
+  const staff = await guardModule("produtos");
+  const sellerMode = staff.role === "VENDEDOR";
   const { id } = await params;
 
   const [product, collections, brands] = await Promise.all([
@@ -61,7 +62,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
         <ChevronLeft size={14} /> Voltar
       </Link>
       <PageHeader eyebrow="Catálogo" title={product.name} subtitle={`${product.brand} · ${product.slug}`} />
-      <ProductForm initial={initial} collections={collections} brands={brands} />
+      <ProductForm initial={initial} collections={collections} brands={brands} sellerMode={sellerMode} />
     </>
   );
 }

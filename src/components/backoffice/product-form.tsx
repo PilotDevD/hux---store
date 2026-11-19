@@ -7,6 +7,7 @@ import {
   upsertProductAction, uploadImageAction, hardDeleteProductAction, type ProductInput,
 } from "@/app/actions/backoffice-catalog";
 import { useToast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
 import {
   GENDERS, GENDER_LABELS, PRODUCT_TYPES, PRODUCT_TYPE_LABELS, SIZES, SIZE_LABELS,
 } from "@/lib/enums";
@@ -51,10 +52,13 @@ export function ProductForm({
   initial,
   collections,
   brands,
+  sellerMode = false,
 }: {
   initial?: ProductFormInitial;
   collections: { id: string; name: string }[];
   brands: string[];
+  /** Vendedor: oculta e bloqueia preços e custos (só edita tamanhos/fotos/dados). */
+  sellerMode?: boolean;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -251,15 +255,19 @@ export function ProductForm({
 
       {/* Pricing */}
       <div className="card space-y-4 p-6">
-        <h2 className="headline text-lg">Preço</h2>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label><span className={label}>Preço de venda (R$) *</span>
-            <input className="field" value={f.basePrice} onChange={(e) => set("basePrice", e.target.value)} placeholder="219,90" inputMode="decimal" />
-          </label>
-          <label><span className={label}>Preço &quot;de&quot; (R$) — riscado</span>
-            <input className="field" value={f.compareAtPrice} onChange={(e) => set("compareAtPrice", e.target.value)} placeholder="259,90" inputMode="decimal" />
-          </label>
-        </div>
+        <h2 className="headline text-lg">{sellerMode ? "Visibilidade" : "Preço"}</h2>
+        {sellerMode ? (
+          <p className="text-sm text-muted">Preços e custos são gerenciados pela administração. Você pode ajustar tamanhos, fotos e demais dados do produto.</p>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label><span className={label}>Preço de venda (R$) *</span>
+              <input className="field" value={f.basePrice} onChange={(e) => set("basePrice", e.target.value)} placeholder="219,90" inputMode="decimal" />
+            </label>
+            <label><span className={label}>Preço &quot;de&quot; (R$) — riscado</span>
+              <input className="field" value={f.compareAtPrice} onChange={(e) => set("compareAtPrice", e.target.value)} placeholder="259,90" inputMode="decimal" />
+            </label>
+          </div>
+        )}
         <div className="flex flex-wrap gap-6">
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={f.featured} onChange={(e) => set("featured", e.target.checked)} className="size-4 accent-orange" />
@@ -371,9 +379,9 @@ export function ProductForm({
         )}
         <div className="space-y-3">
           {f.variants.map((v, i) => (
-            <div key={i} className="grid grid-cols-2 gap-2 rounded-[var(--radius)] border border-line p-3 sm:grid-cols-[80px_1fr_60px_1fr_1fr_1fr_auto]">
+            <div key={i} className={cn("grid grid-cols-2 gap-2 rounded-[var(--radius)] border border-line p-3", sellerMode ? "sm:grid-cols-[80px_1fr_60px_1fr_auto]" : "sm:grid-cols-[80px_1fr_60px_1fr_1fr_1fr_auto]")}>
               {v.sku && (
-                <p className="col-span-2 flex items-center gap-1.5 font-mono text-[0.65rem] text-faint sm:col-span-7">
+                <p className={cn("col-span-2 flex items-center gap-1.5 font-mono text-[0.65rem] text-faint", sellerMode ? "sm:col-span-5" : "sm:col-span-7")}>
                   Código interno: <span className="rounded bg-elevated px-1.5 py-0.5 text-ink-soft">{v.sku}</span>
                 </p>
               )}
@@ -398,12 +406,16 @@ export function ProductForm({
                   title={v.id ? "O estoque desta variante é ajustado na aba Estoque (com histórico de movimentações)." : "Estoque inicial da nova variante"}
                 />
               </label>
-              <label><span className="data-label text-faint">Custo R$</span>
-                <input className="field mt-1 py-2" value={v.cost} onChange={(e) => setVariant(i, "cost", e.target.value)} placeholder="0,00" inputMode="decimal" />
-              </label>
-              <label><span className="data-label text-faint">Preço próprio</span>
-                <input className="field mt-1 py-2" value={v.priceOverride} onChange={(e) => setVariant(i, "priceOverride", e.target.value)} placeholder="opcional" inputMode="decimal" />
-              </label>
+              {!sellerMode && (
+                <label><span className="data-label text-faint">Custo R$</span>
+                  <input className="field mt-1 py-2" value={v.cost} onChange={(e) => setVariant(i, "cost", e.target.value)} placeholder="0,00" inputMode="decimal" />
+                </label>
+              )}
+              {!sellerMode && (
+                <label><span className="data-label text-faint">Preço próprio</span>
+                  <input className="field mt-1 py-2" value={v.priceOverride} onChange={(e) => setVariant(i, "priceOverride", e.target.value)} placeholder="opcional" inputMode="decimal" />
+                </label>
+              )}
               <button onClick={() => removeVariant(i)} className="mt-5 grid size-9 place-items-center self-start text-faint hover:text-negative" aria-label="Remover variante">
                 <Trash2 size={16} />
               </button>
@@ -420,8 +432,8 @@ export function ProductForm({
         </button>
       </div>
 
-      {/* Danger zone — edit only */}
-      {f.id && (
+      {/* Danger zone — edit only, admins/gerentes only */}
+      {f.id && !sellerMode && (
         <div className="card border-negative/30 p-6">
           <div className="flex items-center gap-2 text-negative">
             <AlertTriangle size={18} />

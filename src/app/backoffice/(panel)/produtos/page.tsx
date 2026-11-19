@@ -20,7 +20,8 @@ type SP = Record<string, string | string[] | undefined>;
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
 export default async function ProductsPage({ searchParams }: { searchParams: Promise<SP> }) {
-  await guardModule("produtos");
+  const staff = await guardModule("produtos");
+  const canCreate = staff.role !== "VENDEDOR";
   const sp = await searchParams;
   const brand = first(sp.brand);
   const type = first(sp.tipo);
@@ -73,11 +74,11 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
         eyebrow="Catálogo"
         title="Produtos"
         subtitle={`${products.length} produtos${size ? ` disponíveis no tamanho ${sizeLabel}` : " cadastrados"}`}
-        action={
+        action={canCreate ? (
           <Link href="/backoffice/produtos/novo" className="btn btn-primary">
             <Plus size={16} /> Novo produto
           </Link>
-        }
+        ) : undefined}
       />
 
       <BoFilterBar

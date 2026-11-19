@@ -109,6 +109,10 @@ export async function upsertProductAction(
   const p = parsed.data;
   const basePrice = parseReaisToCents(p.basePrice);
   const compareAt = p.compareAtPrice ? parseReaisToCents(p.compareAtPrice) : null;
+  // Vendedores podem editar produtos (tamanhos/fotos/dados) mas NÃO preços/custos
+  // e não podem criar produtos. Enforcement no servidor (não só na UI).
+  const isSeller = staff.role === "VENDEDOR";
+  if (isSeller && !p.id) return { ok: false, error: "Vendedores não podem criar produtos. Fale com a administração." };
 
   try {
     if (p.id) {
@@ -125,7 +129,10 @@ export async function upsertProductAction(
           brand: p.brand, name: p.name, modelName: p.modelName || null, type: p.type,
           gender: p.gender, supplierCode: p.supplierCode || null,
           description: p.description || null, details: p.details || null,
-          basePrice, compareAtPrice: compareAt, collectionId: p.collectionId || null,
+          // Preços só mudam para não-vendedores.
+          basePrice: isSeller ? existing.basePrice : basePrice,
+          compareAtPrice: isSeller ? existing.compareAtPrice : compareAt,
+          collectionId: p.collectionId || null,
           featured: !!p.featured, active: p.active ?? true, images,
         },
       });
@@ -147,8 +154,10 @@ export async function upsertProductAction(
             where: { id: v.id },
             data: {
               size: v.size, color: v.color, colorHex: v.colorHex || null,
-              priceOverride: v.priceOverride ? parseReaisToCents(v.priceOverride) : null,
-              cost: v.cost ? parseReaisToCents(v.cost) : 0,
+              ...(isSeller ? {} : {
+                priceOverride: v.priceOverride ? parseReaisToCents(v.priceOverride) : null,
+                cost: v.cost ? parseReaisToCents(v.cost) : 0,
+              }),
               active: true,
             },
           });
@@ -163,8 +172,10 @@ export async function upsertProductAction(
               where: { id: match.id },
               data: {
                 color: v.color, colorHex: v.colorHex || null,
-                priceOverride: v.priceOverride ? parseReaisToCents(v.priceOverride) : null,
-                cost: v.cost ? parseReaisToCents(v.cost) : 0,
+                ...(isSeller ? {} : {
+                  priceOverride: v.priceOverride ? parseReaisToCents(v.priceOverride) : null,
+                  cost: v.cost ? parseReaisToCents(v.cost) : 0,
+                }),
                 active: true,
               },
             });
@@ -173,8 +184,8 @@ export async function upsertProductAction(
               data: {
                 size: v.size, color: v.color, colorHex: v.colorHex || null,
                 stock: v.stock,
-                priceOverride: v.priceOverride ? parseReaisToCents(v.priceOverride) : null,
-                cost: v.cost ? parseReaisToCents(v.cost) : 0,
+                priceOverride: isSeller ? null : (v.priceOverride ? parseReaisToCents(v.priceOverride) : null),
+                cost: isSeller ? 0 : (v.cost ? parseReaisToCents(v.cost) : 0),
                 active: true,
                 productId: p.id, sku: skuFor(p.brand, p.type, v.size, v.color, Date.now() + i),
               },
